@@ -11,4 +11,10 @@ export default defineConfig({
       "@": resolve(import.meta.dirname, "./src"),
     },
   },
+  server: {
+    watch: {
+      usePolling: process.env.CHOKIDAR_USEPOLLING === "true",
+      interval: 300,
+    },
+  },
 })
