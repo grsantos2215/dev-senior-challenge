@@ -43,7 +43,7 @@ services:
     environment:
       CADASTRO_URL: http://mock-service:4000
       AGENDAMENTO_URL: http://legacy-service:4100
-      DATABASE_URL: postgres://desafio:desafio@db:5432/checkin
+      DATABASE_URL: postgresql://desafio:desafio@localhost:5432/checkin
       BROKER_URL: amqp://guest:guest@broker:5672
     ports:
       - "3000:3000"

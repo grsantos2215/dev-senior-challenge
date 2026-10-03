@@ -1,5 +1,7 @@
-import { Controller, Get } from '@nestjs/common';
-import { AppService } from './app.service.js';
+import { Controller, Get, Param, Query } from "@nestjs/common";
+import { AppService } from "./app.service.js";
+import axios from "axios";
+import { convertXmlToJson } from "./lib/xml-converter.js";
 
 @Controller()
 export class AppController {
@@ -8,5 +10,20 @@ export class AppController {
   @Get()
   getHello(): string {
     return this.appService.getHello();
+  }
+
+  @Get("agendamentos")
+  async getAgendamentos(@Query("cpf") cpf: string) {
+    try {
+      const api = await axios.get(
+        `${process.env.AGENDAMENTO_URL}/agendamento?cpf=${cpf}`,
+      );
+
+      const result = convertXmlToJson(api.data);
+
+      return result;
+    } catch (error) {
+      throw new Error(`Failed to fetch agendamentos, ${error}`);
+    }
   }
 }

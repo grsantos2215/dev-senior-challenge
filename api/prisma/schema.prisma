@@ -1,13 +1,124 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// Schema do check-in de pacientes.
+//
+// Duas dependencias externas, contratos distintos:
+//   - cadastro (REST): { cpf, nome, dataNascimento }
+//   - legado (XML):   { cpf, possuiAgendamento, especialidade?, horario?, medico? }
+//
+// O legado NAO devolve data de agendamento e responde sempre sobre o dia corrente.
+// Por isso a fila tem uma data (Checkin.dataReferencia) e os
+// dados do agendamento sao um espelho da resposta do legado, nao uma entidade.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+enum StatusCheckin {
+  AGUARDANDO
+  EM_ATENDIMENTO
+  FINALIZADO
+  CANCELADO
+}
+
+enum StatusAgendamento {
+  PRESENTE
+  AUSENTE
+  INDISPONIVEL
+}
+
+enum AcaoLog {
+  CHECKIN_CRIADO
+  CHECKIN_STATUS_ALTERADO
+  CADASTRO_CONSULTADO
+  AGENDAMENTO_CONSULTADO
+  INTEGRACAO_FALHOU
+}
+
+model Paciente {
+  id             String   @id @default(uuid()) @db.Uuid
+  cpf            String   @unique
+  nome           String
+  dataNascimento DateTime @map("data_nascimento") @db.Date
+  criadoEm       DateTime @default(now()) @map("criado_em")
+  atualizadoEm   DateTime @updatedAt @map("atualizado_em")
+
+  checkins Checkin[]
+  logs     Log[]
+
+  @@map("pacientes")
+}
+
+// Fila de check-in de pacientes. 
+model Checkin {
+  id     String        @id @default(uuid()) @db.Uuid
+  status StatusCheckin @default(AGUARDANDO)
+
+  dataReferencia DateTime @map("data_referencia") @db.Date
+
+  paciente   Paciente @relation(fields: [pacienteId], references: [id])
+  pacienteId String   @map("paciente_id") @db.Uuid
+
+  statusAgendamento StatusAgendamento @default(INDISPONIVEL) @map("status_agendamento")
+  especialidade     String?
+  medico            String?
+  horario           DateTime?         @db.Time
+
+  iniciadoEm   DateTime? @map("iniciado_em")
+  finalizadoEm DateTime? @map("finalizado_em")
+
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  logs   Log[]
+  outbox OutboxEvent[]
+
+  @@index([status, dataReferencia, criadoEm])
+  @@index([pacienteId, dataReferencia])
+  @@map("checkins")
+}
+
+// Fila de eventos para publicar no RabbitMQ. Cada evento é publicado apenas uma vez, mesmo que a aplicacao seja reiniciada.
+model OutboxEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  tipo        String
+  routingKey  String    @map("routing_key")
+  payload     Json
+  tentativas  Int       @default(0)
+  criadoEm    DateTime  @default(now()) @map("criado_em")
+  publicadoEm DateTime? @map("publicado_em")
+
+  checkin   Checkin @relation(fields: [checkinId], references: [id])
+  checkinId String  @map("checkin_id") @db.Uuid
+
+  @@index([checkinId])
+  @@map("outbox_events")
+}
+
+model Log {
+  id       String  @id @default(uuid()) @db.Uuid
+  acao     AcaoLog
+  mensagem String
+
+  // Contexto estruturado. Regra: nada de CPF, nome ou nascimento.
+  contexto Json?   @map("contexto")
+  ip       String?
+  hostname String?
+
+  checkin   Checkin? @relation(fields: [checkinId], references: [id])
+  checkinId String?  @map("checkin_id") @db.Uuid
+
+  paciente   Paciente? @relation(fields: [pacienteId], references: [id])
+  pacienteId String?   @map("paciente_id") @db.Uuid
+
+  criadoEm DateTime @default(now()) @map("criado_em")
+
+  @@index([checkinId])
+  @@index([pacienteId])
+  @@index([criadoEm])
+  @@map("logs")
 }
