@@ -198,6 +198,42 @@ desenho/documentação. Por quê._
     - A volta para o Express é uma linha, então o custo de ter escolhido errado
       é baixo.
 
+### ADR 7 - Cancelamento sem horário de início
+
+- **Contexto:** o `checkins_ciclo_de_vida_chk` original exigia
+  `iniciado_em IS NOT NULL` tanto para `FINALIZADO` quanto para `CANCELADO`.
+  Isso forçou a entidade a carimbar um horário de início em um check-in que
+  nunca foi atendido: paciente foi embora da fila e o registro passou a dizer
+  que ele tinha chegado.
+- **Decisão:** `CANCELADO` passa a exigir apenas `finalizado_em IS NOT NULL`.
+  `iniciado_em` fica livre. Quem foi atendido tem início e fim; quem cancelou
+  tem só o fim.
+- **Alternativas consideradas:**
+    - Deixar o CHECK como estava e gerar `iniciado_em` na aplicação: preserva o
+      schema e mente no dado. O registro fica errado.
+    - Criar um `cancelado_em` separado de `finalizado_em`: distingue as duas
+      coisas, mas são o mesmo evento e custa uma coluna e uma segunda entrada no
+      CHECK.
+    - Barrar cancelamento de check-in que não começou: obriga a recepção a
+      chamar `iniciado()` antes de cancelar, o que é mais trabalho para a
+      recepção.
+- **Consequências:**
+    - Migration `20261003194500_cancela_sem_inicio` faz `DROP CONSTRAINT` e
+      recria a mesma constraint. **Não editei a migration anterior**, que já
+      está aplicada
+    - `finalizado()` ganhou guard explícito, porque `validar()` reportaria o
+      status alvo (`FINALIZADO exige iniciadoEm`) em vez do que o chamador fez
+      de errado.
+    - O CHECK ficou mais frouxo, e a entidade ficou mais forte. É a direção
+      certa: o banco é a última linha de defesa, não a única.
+    - **Os dois CHECKs agora estão duplicados em `CheckIn.validar()`.** Essa
+      duplicação é deliberada e cobre a mudança do SQL; o teste de conformidade
+      em `checkin.spec.ts` traduz os dois de volta e falha se a entidade
+      divergir. Se um dia o SQL mudar, será necessário alterar aqui.
+    - `checkins_checkin_aberto_por_dia_unq` não foi afetado: ele filtra por
+      `status IN ('AGUARDANDO','EM_ATENDIMENTO')`, e `CANCELADO` nunca entra
+      nessa contagem desde a migration anterior.
+
 _(Temas sugeridos pelo enunciado que ainda não têm ADR: estratégia de
 resiliência do cadastro REST — timeout, retry/backoff, circuit breaker, cache —
 e o tratamento de `429`; health checks e métricas.)_
