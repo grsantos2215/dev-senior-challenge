@@ -2,59 +2,66 @@
 # Complete com os SEUS serviços: "api" (NestJS) e "web" (React).
 
 services:
-    mock-service:
-        build: ./mock-service
-        ports:
-            - '4000:4000'
+  mock-service:
+    build: ./mock-service
+    ports:
+      - "4000:4000"
 
-    legacy-service:
-        build: ./legacy-service
-        ports:
-            - '4100:4100'
+  legacy-service:
+    build: ./legacy-service
+    ports:
+      - "4100:4100"
 
-    db:
-        image: postgres:16-alpine
-        environment:
-            POSTGRES_USER: desafio
-            POSTGRES_PASSWORD: desafio
-            POSTGRES_DB: checkin
-        ports:
-            - '5432:5432'
-        volumes:
-            - db_data:/var/lib/postgresql/data
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: desafio
+      POSTGRES_PASSWORD: desafio
+      POSTGRES_DB: checkin
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
 
-    # Broker disponível para a mensageria (fila de eventos de check-in).
-    # Você pode usá-lo ou justificar outra abordagem no ARQUITETURA.md.
-    broker:
-        image: rabbitmq:3.13-management-alpine
-        ports:
-            - '5672:5672' # AMQP
-            - '15672:15672' # painel de gestão (guest/guest)
+  # Broker disponível para a mensageria (fila de eventos de check-in).
+  # Você pode usá-lo ou justificar outra abordagem no ARQUITETURA.md.
+  broker:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672" # AMQP
+      - "15672:15672" # painel de gestão (guest/guest)
 
-    # ------------------------------------------------------------------
-    # EXEMPLO (descomente e ajuste). URLs internas na rede do compose:
-    #   cadastro REST : http://mock-service:4000
-    #   legado XML    : http://legacy-service:4100
-    #   banco         : postgres://desafio:desafio@db:5432/checkin
-    #   broker        : amqp://guest:guest@broker:5672
-    #
-    # api:
-    #     build: ./api
-    #     environment:
-    #         CADASTRO_URL: http://mock-service:4000
-    #         AGENDAMENTO_URL: http://legacy-service:4100
-    #         DATABASE_URL: postgres://desafio:desafio@db:5432/checkin
-    #         BROKER_URL: amqp://guest:guest@broker:5672
-    #     ports:
-    #         - '3000:3000'
-    #     depends_on: [db, broker, mock-service, legacy-service]
-    #
-    web:
-        build: ./web
-        ports:
-            - '5173:5173'
-        # depends_on: [api]
-    # ------------------------------------------------------------------
+  # ------------------------------------------------------------------
+  # EXEMPLO (descomente e ajuste). URLs internas na rede do compose:
+  #   cadastro REST : http://mock-service:4000
+  #   legado XML    : http://legacy-service:4100
+  #   banco         : postgres://desafio:desafio@db:5432/checkin
+  #   broker        : amqp://guest:guest@broker:5672
+  #
+  api:
+    build: ./api
+    environment:
+      CADASTRO_URL: http://mock-service:4000
+      AGENDAMENTO_URL: http://legacy-service:4100
+      DATABASE_URL: postgres://desafio:desafio@db:5432/checkin
+      BROKER_URL: amqp://guest:guest@broker:5672
+    ports:
+      - "3000:3000"
+    depends_on: [db, broker, mock-service, legacy-service]
+  #
+  # Hot reload: monta somente o fonte, preservando o node_modules do container.
+  # Nao monte ./web inteiro, senao o node_modules do host sobrescreve o da imagem.
+  web:
+    build: ./web
+    ports:
+      - "5173:5173"
+    volumes:
+      - "./web/src:/app/src"
+      - "./web/public:/app/public"
+      - "./web/index.html:/app/index.html"
+      - "./web/vite.config.ts:/app/vite.config.ts"
+    depends_on: [api]
+  # ------------------------------------------------------------------
 
 volumes:
-    db_data:
+  db_data:
