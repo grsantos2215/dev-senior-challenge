@@ -59,17 +59,26 @@ existe. Repetir uma transição devolve `eventoId: null` e não publica de novo.
 - `POST /check-ins` com CPF, incluindo a proteção de check-in aberto por dia
   (índice parcial único) e o `409` que devolve o `pacienteId` e a
   `dataReferencia` do registro que colidiu.
-- `GET /agendamentos`, proxy do legado com conversão de XML.
+- As demais rotas de check-in, uma por use case: `GET /check-ins?cpf=`,
+  `GET /check-ins/contagem?cpf=`, `GET /check-ins/:checkinId`,
+  `POST /check-ins/:checkinId/iniciar`, `POST /check-ins/:checkinId/finalizar` e
+  `POST /check-ins/:checkinId/cancelar`.
 - Enriquecimento de paciente assíncrono, com retry, descarte de erro permanente
   e pacing para respeitar o rate limit.
 - Ciclo de vida do check-in como use cases: `CreateCheckIn`, `StartCheckIn`,
   `FinalizarCheckIn` e `CancelarCheckIn`, com as regras de transição e a
   idempotência garantidas na entidade.
-- Publicação dos quatro eventos de check-in, sem PII no payload.
+- Publicação dos quatro eventos de check-in, sem dados pessoais no payload.
 - Log append-only com `acao` estruturada, `contexto` em jsonb e trigger que
   recusa `UPDATE`/`DELETE`.
 - Topologia de mensageria declarativa e verificada contra o broker, com testes
   que publicam de verdade.
+
+**Consultar por CPF é rota, e a tradução é da aplicação.** O totem envia CPF;
+para resolver o `pacienteId`, é a função do `ListCheckInsByCpf` e
+`CountCheckInsByCpf`, não do controller, que não fala com repositório. CPF
+desconhecido responde `404`, e isso é o que o distingue de paciente cadastrado
+sem check-in, que responde `200` com lista vazia e contagem zero.
 
 **Deixado como desenho, deliberadamente:**
 
@@ -84,9 +93,9 @@ existe. Repetir uma transição devolve `eventoId: null` e não publica de novo.
   formato de telemetria que ninguém vai consumir. O sinal hoje é o log
   estruturado e a profundidade das filas.
 
-**Por que o recorte é esse:** o risco do exercício não é hacer mais, é fazer
-pouco e fazer certo. Cada peça extra é uma peça que precisa de teste, de
-observabilidade e de alguém para lembrar dela às 3 da manhã.
+**Por que o recorte é esse:** o risco do exercício não é fazer mais, é fazer
+pouco e fazer certo. Cada adição extra é uma camada a mais que precisa de teste
+e de observabilidade.
 
 ## Decisões (ADRs)
 
@@ -643,7 +652,7 @@ existe ainda.
 contra fakes onde a dependência é irrelevante. O critério: se o teste pode
 passar com a integração quebrada, ele não vale.
 
-**177 testes unitários em 15 ficheiros**, sem broker nem banco:
+**173 testes unitários em 15 ficheiros**, sem broker nem banco:
 
 - Entidades e use cases com repositório e porta de eventos em memória: transição
   de estado, idempotência, `404`, pré-condição de início e ausência de
@@ -661,18 +670,24 @@ passar com a integração quebrada, ele não vale.
   consumidor: `enriquecido`, `adiado` com contagem de tentativa, `desistido` em
   `MAX_TENTATIVAS`, `descartado` para paciente inexistente e CPF desconhecido, e
   erro inesperado virando log em vez de loop quente.
-- `app.controller.spec.ts` cobre a consulta de agendamentos contra o XML do
-  legado com `nock`, e verifica que o `cpf` da query não aparece no log.
 - `fila.spec.ts` verifica a topologia pela API de gerenciamento em vez de por
   publicação, com um controle negativo, porque um teste de entrega que dá certo
   não prova nada se a fila de destino puder estar errada.
 
-**38 testes e2e em 4 ficheiros**, contra Postgres e RabbitMQ do
+**58 testes e2e em 5 ficheiros**, contra Postgres e RabbitMQ do
 `docker-compose`:
 
 - `check-in.e2e-spec.ts` cria check-in real e verifica persistência,
   enriquecimento, `409` com o `pacienteId` e `dataReferencia` do registro que
   colidiu, e duplicidade no mesmo dia.
+- `check-in-rotas.e2e-spec.ts` percorre o ciclo de vida inteiro pela HTTP, uma
+  rota por vez. É o ficheiro que fixa o contrato: `404` para CPF desconhecido e
+  para check-in inexistente, `400` para CPF malformado e para id que não é UUID,
+  `409` com o `statusAtual` no corpo ao tentar iniciar um check-in cancelado ou
+  finalizar um que nunca começou, `200` com `eventoId: null` na repetição de uma
+  transição idempotente, e o par lista/contagem por CPF. Os ficheiros e2e rodam
+  com `fileParallelism: false`: todos apontam para o mesmo banco, e um teste que
+  conta check-ins globalmente quebra se outro ficheiro inserir em paralelo.
 - `logs.e2e-spec.ts` é a prova de que o log é append-only de verdade, contra o
   banco: confirma que `POST /check-ins` grava `CHECKIN_CRIADO` ligado ao
   check-in, que nenhum contexto carrega CPF ou nome, que a coluna `mensagem` não
@@ -731,11 +746,8 @@ inspecionado, não porque um teste falhou.
 5. **Rotinas de pagamento do rate limit.** O pacing é por instância; com duas
    réplicas, o intervalo efetivo cai pela metade (ADR 9). Coordinator único ou
    consumo serializado resolvem.
-6. **Rotas HTTP para as transições.** Os use cases existem e estão testados;
-   falta a camada HTTP em cima, e é o próximo passo natural porque o barramento
-   já emite os eventos.
-7. **Circuit breaker no cadastro**, quando o erro sustentado justificar o estado
+6. **Circuit breaker no cadastro**, quando o erro sustentado justificar o estado
    extra (ADR 9).
-8. **Normalizar a linguagem das routing keys** (`checkin.created` contra as três
+7. **Normalizar a linguagem das routing keys** (`checkin.created` contra as três
    em português), em uma major version do contrato de eventos, com os
    consumidores avisados.

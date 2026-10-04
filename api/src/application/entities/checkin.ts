@@ -1,4 +1,5 @@
 import { StatusAgendamento, StatusCheckin } from '@/generated/prisma/enums'
+import { TransicaoInvalida } from '@/application/entities/errors/transicao-invalida'
 
 import { Replace } from '@/helpers/replace'
 import { randomUUID } from 'node:crypto'
@@ -20,10 +21,6 @@ export interface CheckInProps {
     atualizadoEm: Date
 }
 
-/**
- * O CHECK aceita so UUID, e a entidade também. Um id vindo do banco que não
- * bate precisa ser bug de mapeamento, não um id novo.
- */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 type PropsDeEntrada = Replace<
@@ -31,11 +28,6 @@ type PropsDeEntrada = Replace<
     { criadoEm?: Date; atualizadoEm?: Date }
 >
 
-/**
- * Somente para a frente, e sem saída de FINALIZADO/CANCELADO. E mais restrito
- * que o CHECK de proposito: um check-in que nunca passou por EM_ATENDIMENTO
- * não "finalizou", foi cancelado.
- */
 const TRANSICOES: Record<StatusCheckin, readonly StatusCheckin[]> = {
     AGUARDANDO: ['EM_ATENDIMENTO', 'CANCELADO'],
     EM_ATENDIMENTO: ['FINALIZADO', 'CANCELADO'],
@@ -52,9 +44,6 @@ export class CheckIn {
 
         const criadoEm = props.criadoEm ?? new Date()
 
-        // Os setters já normalizam undefined para null; o construtor precisa
-        // fazer o mesmo, senão a mesma entidade serializa de dois jeitos
-        // Depending de como nasceu, e `toJSON()` vira contrato instável.
         this.props = {
             ...props,
             especialidade: props.especialidade ?? null,
@@ -165,7 +154,10 @@ export class CheckIn {
         if (this.props.finalizadoEm) return
 
         if (!this.props.iniciadoEm)
-            throw new Error('CheckIn não pode ser finalizado sem início')
+            throw new TransicaoInvalida(
+                this.props.status,
+                'CheckIn não pode ser finalizado sem início',
+            )
 
         this.aplicar({
             finalizadoEm: new Date(),
@@ -203,14 +195,14 @@ export class CheckIn {
         Object.assign(this.props, mudancas)
 
         try {
-            this.validar()
+            this.validar(anterior.status)
         } catch (erro) {
             this.props = anterior
             throw erro
         }
     }
 
-    private validar(): void {
+    private validar(statusAnterior: StatusCheckin = this.props.status): void {
         const { status, iniciadoEm, finalizadoEm } = this.props
         const temInicio = Boolean(iniciadoEm)
         const temFim = Boolean(finalizadoEm)
@@ -218,24 +210,36 @@ export class CheckIn {
         switch (status) {
             case 'AGUARDANDO':
                 if (temInicio || temFim)
-                    throw new Error(
+                    throw this.transicaoInvalida(
+                        statusAnterior,
                         'AGUARDANDO não aceita iniciadoEm nem finalizadoEm',
                     )
                 break
             case 'EM_ATENDIMENTO':
                 if (!temInicio)
-                    throw new Error('EM_ATENDIMENTO exige iniciadoEm')
+                    throw this.transicaoInvalida(
+                        statusAnterior,
+                        'EM_ATENDIMENTO exige iniciadoEm',
+                    )
                 if (temFim)
-                    throw new Error('EM_ATENDIMENTO não aceita finalizadoEm')
+                    throw this.transicaoInvalida(
+                        statusAnterior,
+                        'EM_ATENDIMENTO não aceita finalizadoEm',
+                    )
                 break
             case 'FINALIZADO':
                 if (!temInicio || !temFim)
-                    throw new Error(
+                    throw this.transicaoInvalida(
+                        statusAnterior,
                         'FINALIZADO exige iniciadoEm e finalizadoEm',
                     )
                 break
             case 'CANCELADO':
-                if (!temFim) throw new Error('CANCELADO exige finalizadoEm')
+                if (!temFim)
+                    throw this.transicaoInvalida(
+                        statusAnterior,
+                        'CANCELADO exige finalizadoEm',
+                    )
                 break
         }
 
@@ -247,5 +251,12 @@ export class CheckIn {
             if (!this.props.horario)
                 throw new Error('statusAgendamento PRESENTE exige horario')
         }
+    }
+
+    private transicaoInvalida(
+        statusAnterior: StatusCheckin,
+        motivo: string,
+    ): TransicaoInvalida {
+        return new TransicaoInvalida(statusAnterior, motivo)
     }
 }

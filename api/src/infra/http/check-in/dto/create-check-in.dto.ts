@@ -1,8 +1,10 @@
 import { IsString, Matches } from 'class-validator'
 
+import { REGEX_CPF } from './consulta-por-cpf.dto'
+
 export class CreateCheckInDto {
     @IsString({ message: 'cpf deve ser uma string' })
-    @Matches(/^\d{11}$/, { message: 'cpf deve ter 11 dígitos' })
+    @Matches(REGEX_CPF, { message: 'cpf deve ter 11 dígitos' })
     cpf: string
 }
 
