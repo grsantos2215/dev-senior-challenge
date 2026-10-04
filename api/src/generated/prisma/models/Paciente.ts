@@ -201,7 +201,6 @@ export type PacienteWhereInput = {
     criadoEm?: Prisma.DateTimeFilter<'Paciente'> | Date | string
     atualizadoEm?: Prisma.DateTimeFilter<'Paciente'> | Date | string
     checkins?: Prisma.CheckinListRelationFilter
-    logs?: Prisma.LogListRelationFilter
 }
 
 export type PacienteOrderByWithRelationInput = {
@@ -212,7 +211,6 @@ export type PacienteOrderByWithRelationInput = {
     criadoEm?: Prisma.SortOrder
     atualizadoEm?: Prisma.SortOrder
     checkins?: Prisma.CheckinOrderByRelationAggregateInput
-    logs?: Prisma.LogOrderByRelationAggregateInput
 }
 
 export type PacienteWhereUniqueInput = Prisma.AtLeast<
@@ -228,7 +226,6 @@ export type PacienteWhereUniqueInput = Prisma.AtLeast<
         criadoEm?: Prisma.DateTimeFilter<'Paciente'> | Date | string
         atualizadoEm?: Prisma.DateTimeFilter<'Paciente'> | Date | string
         checkins?: Prisma.CheckinListRelationFilter
-        logs?: Prisma.LogListRelationFilter
     },
     'id' | 'cpf'
 >
@@ -274,7 +271,6 @@ export type PacienteCreateInput = {
     criadoEm?: Date | string
     atualizadoEm?: Date | string
     checkins?: Prisma.CheckinCreateNestedManyWithoutPacienteInput
-    logs?: Prisma.LogCreateNestedManyWithoutPacienteInput
 }
 
 export type PacienteUncheckedCreateInput = {
@@ -285,7 +281,6 @@ export type PacienteUncheckedCreateInput = {
     criadoEm?: Date | string
     atualizadoEm?: Date | string
     checkins?: Prisma.CheckinUncheckedCreateNestedManyWithoutPacienteInput
-    logs?: Prisma.LogUncheckedCreateNestedManyWithoutPacienteInput
 }
 
 export type PacienteUpdateInput = {
@@ -297,7 +292,6 @@ export type PacienteUpdateInput = {
     criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
     atualizadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
     checkins?: Prisma.CheckinUpdateManyWithoutPacienteNestedInput
-    logs?: Prisma.LogUpdateManyWithoutPacienteNestedInput
 }
 
 export type PacienteUncheckedUpdateInput = {
@@ -309,7 +303,6 @@ export type PacienteUncheckedUpdateInput = {
     criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
     atualizadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
     checkins?: Prisma.CheckinUncheckedUpdateManyWithoutPacienteNestedInput
-    logs?: Prisma.LogUncheckedUpdateManyWithoutPacienteNestedInput
 }
 
 export type PacienteCreateManyInput = {
@@ -373,11 +366,6 @@ export type PacienteScalarRelationFilter = {
     isNot?: Prisma.PacienteWhereInput
 }
 
-export type PacienteNullableScalarRelationFilter = {
-    is?: Prisma.PacienteWhereInput | null
-    isNot?: Prisma.PacienteWhereInput | null
-}
-
 export type StringFieldUpdateOperationsInput = {
     set?: string
 }
@@ -420,34 +408,6 @@ export type PacienteUpdateOneRequiredWithoutCheckinsNestedInput = {
     >
 }
 
-export type PacienteCreateNestedOneWithoutLogsInput = {
-    create?: Prisma.XOR<
-        Prisma.PacienteCreateWithoutLogsInput,
-        Prisma.PacienteUncheckedCreateWithoutLogsInput
-    >
-    connectOrCreate?: Prisma.PacienteCreateOrConnectWithoutLogsInput
-    connect?: Prisma.PacienteWhereUniqueInput
-}
-
-export type PacienteUpdateOneWithoutLogsNestedInput = {
-    create?: Prisma.XOR<
-        Prisma.PacienteCreateWithoutLogsInput,
-        Prisma.PacienteUncheckedCreateWithoutLogsInput
-    >
-    connectOrCreate?: Prisma.PacienteCreateOrConnectWithoutLogsInput
-    upsert?: Prisma.PacienteUpsertWithoutLogsInput
-    disconnect?: Prisma.PacienteWhereInput | boolean
-    delete?: Prisma.PacienteWhereInput | boolean
-    connect?: Prisma.PacienteWhereUniqueInput
-    update?: Prisma.XOR<
-        Prisma.XOR<
-            Prisma.PacienteUpdateToOneWithWhereWithoutLogsInput,
-            Prisma.PacienteUpdateWithoutLogsInput
-        >,
-        Prisma.PacienteUncheckedUpdateWithoutLogsInput
-    >
-}
-
 export type PacienteCreateWithoutCheckinsInput = {
     id?: string
     cpf: string
@@ -455,7 +415,6 @@ export type PacienteCreateWithoutCheckinsInput = {
     dataNascimento?: Date | string | null
     criadoEm?: Date | string
     atualizadoEm?: Date | string
-    logs?: Prisma.LogCreateNestedManyWithoutPacienteInput
 }
 
 export type PacienteUncheckedCreateWithoutCheckinsInput = {
@@ -465,7 +424,6 @@ export type PacienteUncheckedCreateWithoutCheckinsInput = {
     dataNascimento?: Date | string | null
     criadoEm?: Date | string
     atualizadoEm?: Date | string
-    logs?: Prisma.LogUncheckedCreateNestedManyWithoutPacienteInput
 }
 
 export type PacienteCreateOrConnectWithoutCheckinsInput = {
@@ -504,7 +462,6 @@ export type PacienteUpdateWithoutCheckinsInput = {
         Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
     atualizadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-    logs?: Prisma.LogUpdateManyWithoutPacienteNestedInput
 }
 
 export type PacienteUncheckedUpdateWithoutCheckinsInput = {
@@ -515,77 +472,6 @@ export type PacienteUncheckedUpdateWithoutCheckinsInput = {
         Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
     criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
     atualizadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-    logs?: Prisma.LogUncheckedUpdateManyWithoutPacienteNestedInput
-}
-
-export type PacienteCreateWithoutLogsInput = {
-    id?: string
-    cpf: string
-    nome?: string | null
-    dataNascimento?: Date | string | null
-    criadoEm?: Date | string
-    atualizadoEm?: Date | string
-    checkins?: Prisma.CheckinCreateNestedManyWithoutPacienteInput
-}
-
-export type PacienteUncheckedCreateWithoutLogsInput = {
-    id?: string
-    cpf: string
-    nome?: string | null
-    dataNascimento?: Date | string | null
-    criadoEm?: Date | string
-    atualizadoEm?: Date | string
-    checkins?: Prisma.CheckinUncheckedCreateNestedManyWithoutPacienteInput
-}
-
-export type PacienteCreateOrConnectWithoutLogsInput = {
-    where: Prisma.PacienteWhereUniqueInput
-    create: Prisma.XOR<
-        Prisma.PacienteCreateWithoutLogsInput,
-        Prisma.PacienteUncheckedCreateWithoutLogsInput
-    >
-}
-
-export type PacienteUpsertWithoutLogsInput = {
-    update: Prisma.XOR<
-        Prisma.PacienteUpdateWithoutLogsInput,
-        Prisma.PacienteUncheckedUpdateWithoutLogsInput
-    >
-    create: Prisma.XOR<
-        Prisma.PacienteCreateWithoutLogsInput,
-        Prisma.PacienteUncheckedCreateWithoutLogsInput
-    >
-    where?: Prisma.PacienteWhereInput
-}
-
-export type PacienteUpdateToOneWithWhereWithoutLogsInput = {
-    where?: Prisma.PacienteWhereInput
-    data: Prisma.XOR<
-        Prisma.PacienteUpdateWithoutLogsInput,
-        Prisma.PacienteUncheckedUpdateWithoutLogsInput
-    >
-}
-
-export type PacienteUpdateWithoutLogsInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string
-    cpf?: Prisma.StringFieldUpdateOperationsInput | string
-    nome?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    dataNascimento?:
-        Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-    criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-    atualizadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-    checkins?: Prisma.CheckinUpdateManyWithoutPacienteNestedInput
-}
-
-export type PacienteUncheckedUpdateWithoutLogsInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string
-    cpf?: Prisma.StringFieldUpdateOperationsInput | string
-    nome?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    dataNascimento?:
-        Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-    criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-    atualizadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-    checkins?: Prisma.CheckinUncheckedUpdateManyWithoutPacienteNestedInput
 }
 
 /**
@@ -594,7 +480,6 @@ export type PacienteUncheckedUpdateWithoutLogsInput = {
 
 export type PacienteCountOutputType = {
     checkins: number
-    logs: number
 }
 
 export type PacienteCountOutputTypeSelect<
@@ -602,7 +487,6 @@ export type PacienteCountOutputTypeSelect<
         runtime.Types.Extensions.DefaultArgs,
 > = {
     checkins?: boolean | PacienteCountOutputTypeCountCheckinsArgs
-    logs?: boolean | PacienteCountOutputTypeCountLogsArgs
 }
 
 /**
@@ -628,16 +512,6 @@ export type PacienteCountOutputTypeCountCheckinsArgs<
     where?: Prisma.CheckinWhereInput
 }
 
-/**
- * PacienteCountOutputType without action
- */
-export type PacienteCountOutputTypeCountLogsArgs<
-    ExtArgs extends runtime.Types.Extensions.InternalArgs =
-        runtime.Types.Extensions.DefaultArgs,
-> = {
-    where?: Prisma.LogWhereInput
-}
-
 export type PacienteSelect<
     ExtArgs extends runtime.Types.Extensions.InternalArgs =
         runtime.Types.Extensions.DefaultArgs,
@@ -650,7 +524,6 @@ export type PacienteSelect<
         criadoEm?: boolean
         atualizadoEm?: boolean
         checkins?: boolean | Prisma.Paciente$checkinsArgs<ExtArgs>
-        logs?: boolean | Prisma.Paciente$logsArgs<ExtArgs>
         _count?: boolean | Prisma.PacienteCountOutputTypeDefaultArgs<ExtArgs>
     },
     ExtArgs['result']['paciente']
@@ -707,7 +580,6 @@ export type PacienteInclude<
         runtime.Types.Extensions.DefaultArgs,
 > = {
     checkins?: boolean | Prisma.Paciente$checkinsArgs<ExtArgs>
-    logs?: boolean | Prisma.Paciente$logsArgs<ExtArgs>
     _count?: boolean | Prisma.PacienteCountOutputTypeDefaultArgs<ExtArgs>
 }
 export type PacienteIncludeCreateManyAndReturn<
@@ -726,7 +598,6 @@ export type $PacientePayload<
     name: 'Paciente'
     objects: {
         checkins: Prisma.$CheckinPayload<ExtArgs>[]
-        logs: Prisma.$LogPayload<ExtArgs>[]
     }
     scalars: runtime.Types.Extensions.GetPayloadResult<
         {
@@ -1300,17 +1171,6 @@ export interface Prisma__PacienteClient<
           >
         | Null
     >
-    logs<T extends Prisma.Paciente$logsArgs<ExtArgs> = {}>(
-        args?: Prisma.Subset<T, Prisma.Paciente$logsArgs<ExtArgs>>,
-    ): Prisma.PrismaPromise<
-        | runtime.Types.Result.GetResult<
-              Prisma.$LogPayload<ExtArgs>,
-              T,
-              'findMany',
-              GlobalOmitOptions
-          >
-        | Null
-    >
     /**
      * Attaches callbacks for the resolution and/or rejection of the Promise.
      * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -1841,35 +1701,6 @@ export type Paciente$checkinsArgs<
     take?: number
     skip?: number
     distinct?: Prisma.CheckinScalarFieldEnum | Prisma.CheckinScalarFieldEnum[]
-}
-
-/**
- * Paciente.logs
- */
-export type Paciente$logsArgs<
-    ExtArgs extends runtime.Types.Extensions.InternalArgs =
-        runtime.Types.Extensions.DefaultArgs,
-> = {
-    /**
-     * Select specific fields to fetch from the Log
-     */
-    select?: Prisma.LogSelect<ExtArgs> | null
-    /**
-     * Omit specific fields from the Log
-     */
-    omit?: Prisma.LogOmit<ExtArgs> | null
-    /**
-     * Choose, which related nodes to fetch as well
-     */
-    include?: Prisma.LogInclude<ExtArgs> | null
-    where?: Prisma.LogWhereInput
-    orderBy?:
-        | Prisma.LogOrderByWithRelationInput
-        | Prisma.LogOrderByWithRelationInput[]
-    cursor?: Prisma.LogWhereUniqueInput
-    take?: number
-    skip?: number
-    distinct?: Prisma.LogScalarFieldEnum | Prisma.LogScalarFieldEnum[]
 }
 
 /**

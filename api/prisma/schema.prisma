@@ -48,7 +48,6 @@ model Paciente {
   atualizadoEm   DateTime  @updatedAt @map("atualizado_em")
 
   checkins Checkin[]
-  logs     Log[]
 
   @@map("pacientes")
 }
@@ -74,7 +73,6 @@ model Checkin {
   criadoEm     DateTime @default(now()) @map("criado_em")
   atualizadoEm DateTime @updatedAt @map("atualizado_em")
 
-  logs   Log[]
   outbox OutboxEvent[]
 
   @@index([status, dataReferencia, criadoEm])
@@ -108,11 +106,11 @@ model Log {
   ip       String?
   hostname String?
 
-  checkin   Checkin? @relation(fields: [checkinId], references: [id])
-  checkinId String?  @map("checkin_id") @db.Uuid
-
-  paciente   Paciente? @relation(fields: [pacienteId], references: [id])
-  pacienteId String?   @map("paciente_id") @db.Uuid
+  // Referencia historica, sem FK de proposito: a linha de log precisa
+  // sobreviver ao check-in e ao paciente, e nenhuma das duas pode ser
+  // apagada por causa disso.
+  checkinId String? @map("checkin_id") @db.Uuid
+  pacienteId String? @map("paciente_id") @db.Uuid
 
   criadoEm DateTime @default(now()) @map("criado_em")
 

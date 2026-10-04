@@ -205,14 +205,6 @@ export type LogWhereInput = {
     checkinId?: Prisma.UuidNullableFilter<'Log'> | string | null
     pacienteId?: Prisma.UuidNullableFilter<'Log'> | string | null
     criadoEm?: Prisma.DateTimeFilter<'Log'> | Date | string
-    checkin?: Prisma.XOR<
-        Prisma.CheckinNullableScalarRelationFilter,
-        Prisma.CheckinWhereInput
-    > | null
-    paciente?: Prisma.XOR<
-        Prisma.PacienteNullableScalarRelationFilter,
-        Prisma.PacienteWhereInput
-    > | null
 }
 
 export type LogOrderByWithRelationInput = {
@@ -224,8 +216,6 @@ export type LogOrderByWithRelationInput = {
     checkinId?: Prisma.SortOrderInput | Prisma.SortOrder
     pacienteId?: Prisma.SortOrderInput | Prisma.SortOrder
     criadoEm?: Prisma.SortOrder
-    checkin?: Prisma.CheckinOrderByWithRelationInput
-    paciente?: Prisma.PacienteOrderByWithRelationInput
 }
 
 export type LogWhereUniqueInput = Prisma.AtLeast<
@@ -241,14 +231,6 @@ export type LogWhereUniqueInput = Prisma.AtLeast<
         checkinId?: Prisma.UuidNullableFilter<'Log'> | string | null
         pacienteId?: Prisma.UuidNullableFilter<'Log'> | string | null
         criadoEm?: Prisma.DateTimeFilter<'Log'> | Date | string
-        checkin?: Prisma.XOR<
-            Prisma.CheckinNullableScalarRelationFilter,
-            Prisma.CheckinWhereInput
-        > | null
-        paciente?: Prisma.XOR<
-            Prisma.PacienteNullableScalarRelationFilter,
-            Prisma.PacienteWhereInput
-        > | null
     },
     'id'
 >
@@ -291,9 +273,9 @@ export type LogCreateInput = {
     contexto?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
     ip?: string | null
     hostname?: string | null
+    checkinId?: string | null
+    pacienteId?: string | null
     criadoEm?: Date | string
-    checkin?: Prisma.CheckinCreateNestedOneWithoutLogsInput
-    paciente?: Prisma.PacienteCreateNestedOneWithoutLogsInput
 }
 
 export type LogUncheckedCreateInput = {
@@ -313,9 +295,9 @@ export type LogUpdateInput = {
     contexto?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
     ip?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
     hostname?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+    checkinId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+    pacienteId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
     criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-    checkin?: Prisma.CheckinUpdateOneWithoutLogsNestedInput
-    paciente?: Prisma.PacienteUpdateOneWithoutLogsNestedInput
 }
 
 export type LogUncheckedUpdateInput = {
@@ -346,6 +328,8 @@ export type LogUpdateManyMutationInput = {
     contexto?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
     ip?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
     hostname?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+    checkinId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+    pacienteId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
     criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -358,16 +342,6 @@ export type LogUncheckedUpdateManyInput = {
     checkinId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
     pacienteId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
     criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-}
-
-export type LogListRelationFilter = {
-    every?: Prisma.LogWhereInput
-    some?: Prisma.LogWhereInput
-    none?: Prisma.LogWhereInput
-}
-
-export type LogOrderByRelationAggregateInput = {
-    _count?: Prisma.SortOrder
 }
 
 export type LogCountOrderByAggregateInput = {
@@ -401,397 +375,8 @@ export type LogMinOrderByAggregateInput = {
     criadoEm?: Prisma.SortOrder
 }
 
-export type LogCreateNestedManyWithoutPacienteInput = {
-    create?:
-        | Prisma.XOR<
-              Prisma.LogCreateWithoutPacienteInput,
-              Prisma.LogUncheckedCreateWithoutPacienteInput
-          >
-        | Prisma.LogCreateWithoutPacienteInput[]
-        | Prisma.LogUncheckedCreateWithoutPacienteInput[]
-    connectOrCreate?:
-        | Prisma.LogCreateOrConnectWithoutPacienteInput
-        | Prisma.LogCreateOrConnectWithoutPacienteInput[]
-    createMany?: Prisma.LogCreateManyPacienteInputEnvelope
-    connect?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-}
-
-export type LogUncheckedCreateNestedManyWithoutPacienteInput = {
-    create?:
-        | Prisma.XOR<
-              Prisma.LogCreateWithoutPacienteInput,
-              Prisma.LogUncheckedCreateWithoutPacienteInput
-          >
-        | Prisma.LogCreateWithoutPacienteInput[]
-        | Prisma.LogUncheckedCreateWithoutPacienteInput[]
-    connectOrCreate?:
-        | Prisma.LogCreateOrConnectWithoutPacienteInput
-        | Prisma.LogCreateOrConnectWithoutPacienteInput[]
-    createMany?: Prisma.LogCreateManyPacienteInputEnvelope
-    connect?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-}
-
-export type LogUpdateManyWithoutPacienteNestedInput = {
-    create?:
-        | Prisma.XOR<
-              Prisma.LogCreateWithoutPacienteInput,
-              Prisma.LogUncheckedCreateWithoutPacienteInput
-          >
-        | Prisma.LogCreateWithoutPacienteInput[]
-        | Prisma.LogUncheckedCreateWithoutPacienteInput[]
-    connectOrCreate?:
-        | Prisma.LogCreateOrConnectWithoutPacienteInput
-        | Prisma.LogCreateOrConnectWithoutPacienteInput[]
-    upsert?:
-        | Prisma.LogUpsertWithWhereUniqueWithoutPacienteInput
-        | Prisma.LogUpsertWithWhereUniqueWithoutPacienteInput[]
-    createMany?: Prisma.LogCreateManyPacienteInputEnvelope
-    set?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-    disconnect?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-    delete?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-    connect?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-    update?:
-        | Prisma.LogUpdateWithWhereUniqueWithoutPacienteInput
-        | Prisma.LogUpdateWithWhereUniqueWithoutPacienteInput[]
-    updateMany?:
-        | Prisma.LogUpdateManyWithWhereWithoutPacienteInput
-        | Prisma.LogUpdateManyWithWhereWithoutPacienteInput[]
-    deleteMany?: Prisma.LogScalarWhereInput | Prisma.LogScalarWhereInput[]
-}
-
-export type LogUncheckedUpdateManyWithoutPacienteNestedInput = {
-    create?:
-        | Prisma.XOR<
-              Prisma.LogCreateWithoutPacienteInput,
-              Prisma.LogUncheckedCreateWithoutPacienteInput
-          >
-        | Prisma.LogCreateWithoutPacienteInput[]
-        | Prisma.LogUncheckedCreateWithoutPacienteInput[]
-    connectOrCreate?:
-        | Prisma.LogCreateOrConnectWithoutPacienteInput
-        | Prisma.LogCreateOrConnectWithoutPacienteInput[]
-    upsert?:
-        | Prisma.LogUpsertWithWhereUniqueWithoutPacienteInput
-        | Prisma.LogUpsertWithWhereUniqueWithoutPacienteInput[]
-    createMany?: Prisma.LogCreateManyPacienteInputEnvelope
-    set?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-    disconnect?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-    delete?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-    connect?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-    update?:
-        | Prisma.LogUpdateWithWhereUniqueWithoutPacienteInput
-        | Prisma.LogUpdateWithWhereUniqueWithoutPacienteInput[]
-    updateMany?:
-        | Prisma.LogUpdateManyWithWhereWithoutPacienteInput
-        | Prisma.LogUpdateManyWithWhereWithoutPacienteInput[]
-    deleteMany?: Prisma.LogScalarWhereInput | Prisma.LogScalarWhereInput[]
-}
-
-export type LogCreateNestedManyWithoutCheckinInput = {
-    create?:
-        | Prisma.XOR<
-              Prisma.LogCreateWithoutCheckinInput,
-              Prisma.LogUncheckedCreateWithoutCheckinInput
-          >
-        | Prisma.LogCreateWithoutCheckinInput[]
-        | Prisma.LogUncheckedCreateWithoutCheckinInput[]
-    connectOrCreate?:
-        | Prisma.LogCreateOrConnectWithoutCheckinInput
-        | Prisma.LogCreateOrConnectWithoutCheckinInput[]
-    createMany?: Prisma.LogCreateManyCheckinInputEnvelope
-    connect?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-}
-
-export type LogUncheckedCreateNestedManyWithoutCheckinInput = {
-    create?:
-        | Prisma.XOR<
-              Prisma.LogCreateWithoutCheckinInput,
-              Prisma.LogUncheckedCreateWithoutCheckinInput
-          >
-        | Prisma.LogCreateWithoutCheckinInput[]
-        | Prisma.LogUncheckedCreateWithoutCheckinInput[]
-    connectOrCreate?:
-        | Prisma.LogCreateOrConnectWithoutCheckinInput
-        | Prisma.LogCreateOrConnectWithoutCheckinInput[]
-    createMany?: Prisma.LogCreateManyCheckinInputEnvelope
-    connect?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-}
-
-export type LogUpdateManyWithoutCheckinNestedInput = {
-    create?:
-        | Prisma.XOR<
-              Prisma.LogCreateWithoutCheckinInput,
-              Prisma.LogUncheckedCreateWithoutCheckinInput
-          >
-        | Prisma.LogCreateWithoutCheckinInput[]
-        | Prisma.LogUncheckedCreateWithoutCheckinInput[]
-    connectOrCreate?:
-        | Prisma.LogCreateOrConnectWithoutCheckinInput
-        | Prisma.LogCreateOrConnectWithoutCheckinInput[]
-    upsert?:
-        | Prisma.LogUpsertWithWhereUniqueWithoutCheckinInput
-        | Prisma.LogUpsertWithWhereUniqueWithoutCheckinInput[]
-    createMany?: Prisma.LogCreateManyCheckinInputEnvelope
-    set?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-    disconnect?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-    delete?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-    connect?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-    update?:
-        | Prisma.LogUpdateWithWhereUniqueWithoutCheckinInput
-        | Prisma.LogUpdateWithWhereUniqueWithoutCheckinInput[]
-    updateMany?:
-        | Prisma.LogUpdateManyWithWhereWithoutCheckinInput
-        | Prisma.LogUpdateManyWithWhereWithoutCheckinInput[]
-    deleteMany?: Prisma.LogScalarWhereInput | Prisma.LogScalarWhereInput[]
-}
-
-export type LogUncheckedUpdateManyWithoutCheckinNestedInput = {
-    create?:
-        | Prisma.XOR<
-              Prisma.LogCreateWithoutCheckinInput,
-              Prisma.LogUncheckedCreateWithoutCheckinInput
-          >
-        | Prisma.LogCreateWithoutCheckinInput[]
-        | Prisma.LogUncheckedCreateWithoutCheckinInput[]
-    connectOrCreate?:
-        | Prisma.LogCreateOrConnectWithoutCheckinInput
-        | Prisma.LogCreateOrConnectWithoutCheckinInput[]
-    upsert?:
-        | Prisma.LogUpsertWithWhereUniqueWithoutCheckinInput
-        | Prisma.LogUpsertWithWhereUniqueWithoutCheckinInput[]
-    createMany?: Prisma.LogCreateManyCheckinInputEnvelope
-    set?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-    disconnect?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-    delete?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-    connect?: Prisma.LogWhereUniqueInput | Prisma.LogWhereUniqueInput[]
-    update?:
-        | Prisma.LogUpdateWithWhereUniqueWithoutCheckinInput
-        | Prisma.LogUpdateWithWhereUniqueWithoutCheckinInput[]
-    updateMany?:
-        | Prisma.LogUpdateManyWithWhereWithoutCheckinInput
-        | Prisma.LogUpdateManyWithWhereWithoutCheckinInput[]
-    deleteMany?: Prisma.LogScalarWhereInput | Prisma.LogScalarWhereInput[]
-}
-
 export type EnumAcaoLogFieldUpdateOperationsInput = {
     set?: $Enums.AcaoLog
-}
-
-export type LogCreateWithoutPacienteInput = {
-    id?: string
-    acao: $Enums.AcaoLog
-    contexto?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-    ip?: string | null
-    hostname?: string | null
-    criadoEm?: Date | string
-    checkin?: Prisma.CheckinCreateNestedOneWithoutLogsInput
-}
-
-export type LogUncheckedCreateWithoutPacienteInput = {
-    id?: string
-    acao: $Enums.AcaoLog
-    contexto?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-    ip?: string | null
-    hostname?: string | null
-    checkinId?: string | null
-    criadoEm?: Date | string
-}
-
-export type LogCreateOrConnectWithoutPacienteInput = {
-    where: Prisma.LogWhereUniqueInput
-    create: Prisma.XOR<
-        Prisma.LogCreateWithoutPacienteInput,
-        Prisma.LogUncheckedCreateWithoutPacienteInput
-    >
-}
-
-export type LogCreateManyPacienteInputEnvelope = {
-    data:
-        Prisma.LogCreateManyPacienteInput | Prisma.LogCreateManyPacienteInput[]
-    skipDuplicates?: boolean
-}
-
-export type LogUpsertWithWhereUniqueWithoutPacienteInput = {
-    where: Prisma.LogWhereUniqueInput
-    update: Prisma.XOR<
-        Prisma.LogUpdateWithoutPacienteInput,
-        Prisma.LogUncheckedUpdateWithoutPacienteInput
-    >
-    create: Prisma.XOR<
-        Prisma.LogCreateWithoutPacienteInput,
-        Prisma.LogUncheckedCreateWithoutPacienteInput
-    >
-}
-
-export type LogUpdateWithWhereUniqueWithoutPacienteInput = {
-    where: Prisma.LogWhereUniqueInput
-    data: Prisma.XOR<
-        Prisma.LogUpdateWithoutPacienteInput,
-        Prisma.LogUncheckedUpdateWithoutPacienteInput
-    >
-}
-
-export type LogUpdateManyWithWhereWithoutPacienteInput = {
-    where: Prisma.LogScalarWhereInput
-    data: Prisma.XOR<
-        Prisma.LogUpdateManyMutationInput,
-        Prisma.LogUncheckedUpdateManyWithoutPacienteInput
-    >
-}
-
-export type LogScalarWhereInput = {
-    AND?: Prisma.LogScalarWhereInput | Prisma.LogScalarWhereInput[]
-    OR?: Prisma.LogScalarWhereInput[]
-    NOT?: Prisma.LogScalarWhereInput | Prisma.LogScalarWhereInput[]
-    id?: Prisma.UuidFilter<'Log'> | string
-    acao?: Prisma.EnumAcaoLogFilter<'Log'> | $Enums.AcaoLog
-    contexto?: Prisma.JsonNullableFilter<'Log'>
-    ip?: Prisma.StringNullableFilter<'Log'> | string | null
-    hostname?: Prisma.StringNullableFilter<'Log'> | string | null
-    checkinId?: Prisma.UuidNullableFilter<'Log'> | string | null
-    pacienteId?: Prisma.UuidNullableFilter<'Log'> | string | null
-    criadoEm?: Prisma.DateTimeFilter<'Log'> | Date | string
-}
-
-export type LogCreateWithoutCheckinInput = {
-    id?: string
-    acao: $Enums.AcaoLog
-    contexto?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-    ip?: string | null
-    hostname?: string | null
-    criadoEm?: Date | string
-    paciente?: Prisma.PacienteCreateNestedOneWithoutLogsInput
-}
-
-export type LogUncheckedCreateWithoutCheckinInput = {
-    id?: string
-    acao: $Enums.AcaoLog
-    contexto?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-    ip?: string | null
-    hostname?: string | null
-    pacienteId?: string | null
-    criadoEm?: Date | string
-}
-
-export type LogCreateOrConnectWithoutCheckinInput = {
-    where: Prisma.LogWhereUniqueInput
-    create: Prisma.XOR<
-        Prisma.LogCreateWithoutCheckinInput,
-        Prisma.LogUncheckedCreateWithoutCheckinInput
-    >
-}
-
-export type LogCreateManyCheckinInputEnvelope = {
-    data: Prisma.LogCreateManyCheckinInput | Prisma.LogCreateManyCheckinInput[]
-    skipDuplicates?: boolean
-}
-
-export type LogUpsertWithWhereUniqueWithoutCheckinInput = {
-    where: Prisma.LogWhereUniqueInput
-    update: Prisma.XOR<
-        Prisma.LogUpdateWithoutCheckinInput,
-        Prisma.LogUncheckedUpdateWithoutCheckinInput
-    >
-    create: Prisma.XOR<
-        Prisma.LogCreateWithoutCheckinInput,
-        Prisma.LogUncheckedCreateWithoutCheckinInput
-    >
-}
-
-export type LogUpdateWithWhereUniqueWithoutCheckinInput = {
-    where: Prisma.LogWhereUniqueInput
-    data: Prisma.XOR<
-        Prisma.LogUpdateWithoutCheckinInput,
-        Prisma.LogUncheckedUpdateWithoutCheckinInput
-    >
-}
-
-export type LogUpdateManyWithWhereWithoutCheckinInput = {
-    where: Prisma.LogScalarWhereInput
-    data: Prisma.XOR<
-        Prisma.LogUpdateManyMutationInput,
-        Prisma.LogUncheckedUpdateManyWithoutCheckinInput
-    >
-}
-
-export type LogCreateManyPacienteInput = {
-    id?: string
-    acao: $Enums.AcaoLog
-    contexto?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-    ip?: string | null
-    hostname?: string | null
-    checkinId?: string | null
-    criadoEm?: Date | string
-}
-
-export type LogUpdateWithoutPacienteInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string
-    acao?: Prisma.EnumAcaoLogFieldUpdateOperationsInput | $Enums.AcaoLog
-    contexto?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-    ip?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    hostname?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-    checkin?: Prisma.CheckinUpdateOneWithoutLogsNestedInput
-}
-
-export type LogUncheckedUpdateWithoutPacienteInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string
-    acao?: Prisma.EnumAcaoLogFieldUpdateOperationsInput | $Enums.AcaoLog
-    contexto?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-    ip?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    hostname?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    checkinId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-}
-
-export type LogUncheckedUpdateManyWithoutPacienteInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string
-    acao?: Prisma.EnumAcaoLogFieldUpdateOperationsInput | $Enums.AcaoLog
-    contexto?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-    ip?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    hostname?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    checkinId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-}
-
-export type LogCreateManyCheckinInput = {
-    id?: string
-    acao: $Enums.AcaoLog
-    contexto?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-    ip?: string | null
-    hostname?: string | null
-    pacienteId?: string | null
-    criadoEm?: Date | string
-}
-
-export type LogUpdateWithoutCheckinInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string
-    acao?: Prisma.EnumAcaoLogFieldUpdateOperationsInput | $Enums.AcaoLog
-    contexto?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-    ip?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    hostname?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-    paciente?: Prisma.PacienteUpdateOneWithoutLogsNestedInput
-}
-
-export type LogUncheckedUpdateWithoutCheckinInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string
-    acao?: Prisma.EnumAcaoLogFieldUpdateOperationsInput | $Enums.AcaoLog
-    contexto?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-    ip?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    hostname?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    pacienteId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-}
-
-export type LogUncheckedUpdateManyWithoutCheckinInput = {
-    id?: Prisma.StringFieldUpdateOperationsInput | string
-    acao?: Prisma.EnumAcaoLogFieldUpdateOperationsInput | $Enums.AcaoLog
-    contexto?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-    ip?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    hostname?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    pacienteId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-    criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 export type LogSelect<
@@ -807,8 +392,6 @@ export type LogSelect<
         checkinId?: boolean
         pacienteId?: boolean
         criadoEm?: boolean
-        checkin?: boolean | Prisma.Log$checkinArgs<ExtArgs>
-        paciente?: boolean | Prisma.Log$pacienteArgs<ExtArgs>
     },
     ExtArgs['result']['log']
 >
@@ -826,8 +409,6 @@ export type LogSelectCreateManyAndReturn<
         checkinId?: boolean
         pacienteId?: boolean
         criadoEm?: boolean
-        checkin?: boolean | Prisma.Log$checkinArgs<ExtArgs>
-        paciente?: boolean | Prisma.Log$pacienteArgs<ExtArgs>
     },
     ExtArgs['result']['log']
 >
@@ -845,8 +426,6 @@ export type LogSelectUpdateManyAndReturn<
         checkinId?: boolean
         pacienteId?: boolean
         criadoEm?: boolean
-        checkin?: boolean | Prisma.Log$checkinArgs<ExtArgs>
-        paciente?: boolean | Prisma.Log$pacienteArgs<ExtArgs>
     },
     ExtArgs['result']['log']
 >
@@ -876,37 +455,13 @@ export type LogOmit<
     | 'criadoEm',
     ExtArgs['result']['log']
 >
-export type LogInclude<
-    ExtArgs extends runtime.Types.Extensions.InternalArgs =
-        runtime.Types.Extensions.DefaultArgs,
-> = {
-    checkin?: boolean | Prisma.Log$checkinArgs<ExtArgs>
-    paciente?: boolean | Prisma.Log$pacienteArgs<ExtArgs>
-}
-export type LogIncludeCreateManyAndReturn<
-    ExtArgs extends runtime.Types.Extensions.InternalArgs =
-        runtime.Types.Extensions.DefaultArgs,
-> = {
-    checkin?: boolean | Prisma.Log$checkinArgs<ExtArgs>
-    paciente?: boolean | Prisma.Log$pacienteArgs<ExtArgs>
-}
-export type LogIncludeUpdateManyAndReturn<
-    ExtArgs extends runtime.Types.Extensions.InternalArgs =
-        runtime.Types.Extensions.DefaultArgs,
-> = {
-    checkin?: boolean | Prisma.Log$checkinArgs<ExtArgs>
-    paciente?: boolean | Prisma.Log$pacienteArgs<ExtArgs>
-}
 
 export type $LogPayload<
     ExtArgs extends runtime.Types.Extensions.InternalArgs =
         runtime.Types.Extensions.DefaultArgs,
 > = {
     name: 'Log'
-    objects: {
-        checkin: Prisma.$CheckinPayload<ExtArgs> | null
-        paciente: Prisma.$PacientePayload<ExtArgs> | null
-    }
+    objects: {}
     scalars: runtime.Types.Extensions.GetPayloadResult<
         {
             id: string
@@ -1467,32 +1022,6 @@ export interface Prisma__LogClient<
     GlobalOmitOptions = {},
 > extends Prisma.PrismaPromise<T> {
     readonly [Symbol.toStringTag]: 'PrismaPromise'
-    checkin<T extends Prisma.Log$checkinArgs<ExtArgs> = {}>(
-        args?: Prisma.Subset<T, Prisma.Log$checkinArgs<ExtArgs>>,
-    ): Prisma.Prisma__CheckinClient<
-        runtime.Types.Result.GetResult<
-            Prisma.$CheckinPayload<ExtArgs>,
-            T,
-            'findUniqueOrThrow',
-            GlobalOmitOptions
-        > | null,
-        null,
-        ExtArgs,
-        GlobalOmitOptions
-    >
-    paciente<T extends Prisma.Log$pacienteArgs<ExtArgs> = {}>(
-        args?: Prisma.Subset<T, Prisma.Log$pacienteArgs<ExtArgs>>,
-    ): Prisma.Prisma__PacienteClient<
-        runtime.Types.Result.GetResult<
-            Prisma.$PacientePayload<ExtArgs>,
-            T,
-            'findUniqueOrThrow',
-            GlobalOmitOptions
-        > | null,
-        null,
-        ExtArgs,
-        GlobalOmitOptions
-    >
     /**
      * Attaches callbacks for the resolution and/or rejection of the Promise.
      * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -1560,10 +1089,6 @@ export type LogFindUniqueArgs<
      */
     omit?: Prisma.LogOmit<ExtArgs> | null
     /**
-     * Choose, which related nodes to fetch as well
-     */
-    include?: Prisma.LogInclude<ExtArgs> | null
-    /**
      * Filter, which Log to fetch.
      */
     where: Prisma.LogWhereUniqueInput
@@ -1585,10 +1110,6 @@ export type LogFindUniqueOrThrowArgs<
      */
     omit?: Prisma.LogOmit<ExtArgs> | null
     /**
-     * Choose, which related nodes to fetch as well
-     */
-    include?: Prisma.LogInclude<ExtArgs> | null
-    /**
      * Filter, which Log to fetch.
      */
     where: Prisma.LogWhereUniqueInput
@@ -1609,10 +1130,6 @@ export type LogFindFirstArgs<
      * Omit specific fields from the Log
      */
     omit?: Prisma.LogOmit<ExtArgs> | null
-    /**
-     * Choose, which related nodes to fetch as well
-     */
-    include?: Prisma.LogInclude<ExtArgs> | null
     /**
      * Filter, which Log to fetch.
      */
@@ -1667,10 +1184,6 @@ export type LogFindFirstOrThrowArgs<
      */
     omit?: Prisma.LogOmit<ExtArgs> | null
     /**
-     * Choose, which related nodes to fetch as well
-     */
-    include?: Prisma.LogInclude<ExtArgs> | null
-    /**
      * Filter, which Log to fetch.
      */
     where?: Prisma.LogWhereInput
@@ -1723,10 +1236,6 @@ export type LogFindManyArgs<
      * Omit specific fields from the Log
      */
     omit?: Prisma.LogOmit<ExtArgs> | null
-    /**
-     * Choose, which related nodes to fetch as well
-     */
-    include?: Prisma.LogInclude<ExtArgs> | null
     /**
      * Filter, which Logs to fetch.
      */
@@ -1781,10 +1290,6 @@ export type LogCreateArgs<
      */
     omit?: Prisma.LogOmit<ExtArgs> | null
     /**
-     * Choose, which related nodes to fetch as well
-     */
-    include?: Prisma.LogInclude<ExtArgs> | null
-    /**
      * The data needed to create a Log.
      */
     data: Prisma.XOR<Prisma.LogCreateInput, Prisma.LogUncheckedCreateInput>
@@ -1824,10 +1329,6 @@ export type LogCreateManyAndReturnArgs<
      */
     data: Prisma.LogCreateManyInput | Prisma.LogCreateManyInput[]
     skipDuplicates?: boolean
-    /**
-     * Choose, which related nodes to fetch as well
-     */
-    include?: Prisma.LogIncludeCreateManyAndReturn<ExtArgs> | null
 }
 
 /**
@@ -1845,10 +1346,6 @@ export type LogUpdateArgs<
      * Omit specific fields from the Log
      */
     omit?: Prisma.LogOmit<ExtArgs> | null
-    /**
-     * Choose, which related nodes to fetch as well
-     */
-    include?: Prisma.LogInclude<ExtArgs> | null
     /**
      * The data needed to update a Log.
      */
@@ -1913,10 +1410,6 @@ export type LogUpdateManyAndReturnArgs<
      * Limit how many Logs to update.
      */
     limit?: number
-    /**
-     * Choose, which related nodes to fetch as well
-     */
-    include?: Prisma.LogIncludeUpdateManyAndReturn<ExtArgs> | null
 }
 
 /**
@@ -1934,10 +1427,6 @@ export type LogUpsertArgs<
      * Omit specific fields from the Log
      */
     omit?: Prisma.LogOmit<ExtArgs> | null
-    /**
-     * Choose, which related nodes to fetch as well
-     */
-    include?: Prisma.LogInclude<ExtArgs> | null
     /**
      * The filter to search for the Log to update in case it exists.
      */
@@ -1968,10 +1457,6 @@ export type LogDeleteArgs<
      */
     omit?: Prisma.LogOmit<ExtArgs> | null
     /**
-     * Choose, which related nodes to fetch as well
-     */
-    include?: Prisma.LogInclude<ExtArgs> | null
-    /**
      * Filter which Log to delete.
      */
     where: Prisma.LogWhereUniqueInput
@@ -1995,50 +1480,6 @@ export type LogDeleteManyArgs<
 }
 
 /**
- * Log.checkin
- */
-export type Log$checkinArgs<
-    ExtArgs extends runtime.Types.Extensions.InternalArgs =
-        runtime.Types.Extensions.DefaultArgs,
-> = {
-    /**
-     * Select specific fields to fetch from the Checkin
-     */
-    select?: Prisma.CheckinSelect<ExtArgs> | null
-    /**
-     * Omit specific fields from the Checkin
-     */
-    omit?: Prisma.CheckinOmit<ExtArgs> | null
-    /**
-     * Choose, which related nodes to fetch as well
-     */
-    include?: Prisma.CheckinInclude<ExtArgs> | null
-    where?: Prisma.CheckinWhereInput
-}
-
-/**
- * Log.paciente
- */
-export type Log$pacienteArgs<
-    ExtArgs extends runtime.Types.Extensions.InternalArgs =
-        runtime.Types.Extensions.DefaultArgs,
-> = {
-    /**
-     * Select specific fields to fetch from the Paciente
-     */
-    select?: Prisma.PacienteSelect<ExtArgs> | null
-    /**
-     * Omit specific fields from the Paciente
-     */
-    omit?: Prisma.PacienteOmit<ExtArgs> | null
-    /**
-     * Choose, which related nodes to fetch as well
-     */
-    include?: Prisma.PacienteInclude<ExtArgs> | null
-    where?: Prisma.PacienteWhereInput
-}
-
-/**
  * Log without action
  */
 export type LogDefaultArgs<
@@ -2053,8 +1494,4 @@ export type LogDefaultArgs<
      * Omit specific fields from the Log
      */
     omit?: Prisma.LogOmit<ExtArgs> | null
-    /**
-     * Choose, which related nodes to fetch as well
-     */
-    include?: Prisma.LogInclude<ExtArgs> | null
 }
