@@ -156,8 +156,8 @@ export type PacienteGroupByArgs<ExtArgs extends runtime.Types.Extensions.Interna
 export type PacienteGroupByOutputType = {
   id: string
   cpf: string
-  nome: string
-  dataNascimento: Date
+  nome: string | null
+  dataNascimento: Date | null
   criadoEm: Date
   atualizadoEm: Date
   _count: PacienteCountAggregateOutputType | null
@@ -186,8 +186,8 @@ export type PacienteWhereInput = {
   NOT?: Prisma.PacienteWhereInput | Prisma.PacienteWhereInput[]
   id?: Prisma.UuidFilter<"Paciente"> | string
   cpf?: Prisma.StringFilter<"Paciente"> | string
-  nome?: Prisma.StringFilter<"Paciente"> | string
-  dataNascimento?: Prisma.DateTimeFilter<"Paciente"> | Date | string
+  nome?: Prisma.StringNullableFilter<"Paciente"> | string | null
+  dataNascimento?: Prisma.DateTimeNullableFilter<"Paciente"> | Date | string | null
   criadoEm?: Prisma.DateTimeFilter<"Paciente"> | Date | string
   atualizadoEm?: Prisma.DateTimeFilter<"Paciente"> | Date | string
   checkins?: Prisma.CheckinListRelationFilter
@@ -197,8 +197,8 @@ export type PacienteWhereInput = {
 export type PacienteOrderByWithRelationInput = {
   id?: Prisma.SortOrder
   cpf?: Prisma.SortOrder
-  nome?: Prisma.SortOrder
-  dataNascimento?: Prisma.SortOrder
+  nome?: Prisma.SortOrderInput | Prisma.SortOrder
+  dataNascimento?: Prisma.SortOrderInput | Prisma.SortOrder
   criadoEm?: Prisma.SortOrder
   atualizadoEm?: Prisma.SortOrder
   checkins?: Prisma.CheckinOrderByRelationAggregateInput
@@ -211,8 +211,8 @@ export type PacienteWhereUniqueInput = Prisma.AtLeast<{
   AND?: Prisma.PacienteWhereInput | Prisma.PacienteWhereInput[]
   OR?: Prisma.PacienteWhereInput[]
   NOT?: Prisma.PacienteWhereInput | Prisma.PacienteWhereInput[]
-  nome?: Prisma.StringFilter<"Paciente"> | string
-  dataNascimento?: Prisma.DateTimeFilter<"Paciente"> | Date | string
+  nome?: Prisma.StringNullableFilter<"Paciente"> | string | null
+  dataNascimento?: Prisma.DateTimeNullableFilter<"Paciente"> | Date | string | null
   criadoEm?: Prisma.DateTimeFilter<"Paciente"> | Date | string
   atualizadoEm?: Prisma.DateTimeFilter<"Paciente"> | Date | string
   checkins?: Prisma.CheckinListRelationFilter
@@ -222,8 +222,8 @@ export type PacienteWhereUniqueInput = Prisma.AtLeast<{
 export type PacienteOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
   cpf?: Prisma.SortOrder
-  nome?: Prisma.SortOrder
-  dataNascimento?: Prisma.SortOrder
+  nome?: Prisma.SortOrderInput | Prisma.SortOrder
+  dataNascimento?: Prisma.SortOrderInput | Prisma.SortOrder
   criadoEm?: Prisma.SortOrder
   atualizadoEm?: Prisma.SortOrder
   _count?: Prisma.PacienteCountOrderByAggregateInput
@@ -237,8 +237,8 @@ export type PacienteScalarWhereWithAggregatesInput = {
   NOT?: Prisma.PacienteScalarWhereWithAggregatesInput | Prisma.PacienteScalarWhereWithAggregatesInput[]
   id?: Prisma.UuidWithAggregatesFilter<"Paciente"> | string
   cpf?: Prisma.StringWithAggregatesFilter<"Paciente"> | string
-  nome?: Prisma.StringWithAggregatesFilter<"Paciente"> | string
-  dataNascimento?: Prisma.DateTimeWithAggregatesFilter<"Paciente"> | Date | string
+  nome?: Prisma.StringNullableWithAggregatesFilter<"Paciente"> | string | null
+  dataNascimento?: Prisma.DateTimeNullableWithAggregatesFilter<"Paciente"> | Date | string | null
   criadoEm?: Prisma.DateTimeWithAggregatesFilter<"Paciente"> | Date | string
   atualizadoEm?: Prisma.DateTimeWithAggregatesFilter<"Paciente"> | Date | string
 }
@@ -246,8 +246,8 @@ export type PacienteScalarWhereWithAggregatesInput = {
 export type PacienteCreateInput = {
   id?: string
   cpf: string
-  nome: string
-  dataNascimento: Date | string
+  nome?: string | null
+  dataNascimento?: Date | string | null
   criadoEm?: Date | string
   atualizadoEm?: Date | string
   checkins?: Prisma.CheckinCreateNestedManyWithoutPacienteInput
@@ -257,8 +257,8 @@ export type PacienteCreateInput = {
 export type PacienteUncheckedCreateInput = {
   id?: string
   cpf: string
-  nome: string
-  dataNascimento: Date | string
+  nome?: string | null
+  dataNascimento?: Date | string | null
   criadoEm?: Date | string
   atualizadoEm?: Date | string
   checkins?: Prisma.CheckinUncheckedCreateNestedManyWithoutPacienteInput
@@ -268,8 +268,8 @@ export type PacienteUncheckedCreateInput = {
 export type PacienteUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   cpf?: Prisma.StringFieldUpdateOperationsInput | string
-  nome?: Prisma.StringFieldUpdateOperationsInput | string
-  dataNascimento?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  nome?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dataNascimento?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   atualizadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   checkins?: Prisma.CheckinUpdateManyWithoutPacienteNestedInput
@@ -279,8 +279,8 @@ export type PacienteUpdateInput = {
 export type PacienteUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   cpf?: Prisma.StringFieldUpdateOperationsInput | string
-  nome?: Prisma.StringFieldUpdateOperationsInput | string
-  dataNascimento?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  nome?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dataNascimento?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   atualizadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   checkins?: Prisma.CheckinUncheckedUpdateManyWithoutPacienteNestedInput
@@ -290,8 +290,8 @@ export type PacienteUncheckedUpdateInput = {
 export type PacienteCreateManyInput = {
   id?: string
   cpf: string
-  nome: string
-  dataNascimento: Date | string
+  nome?: string | null
+  dataNascimento?: Date | string | null
   criadoEm?: Date | string
   atualizadoEm?: Date | string
 }
@@ -299,8 +299,8 @@ export type PacienteCreateManyInput = {
 export type PacienteUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   cpf?: Prisma.StringFieldUpdateOperationsInput | string
-  nome?: Prisma.StringFieldUpdateOperationsInput | string
-  dataNascimento?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  nome?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dataNascimento?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   atualizadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -308,8 +308,8 @@ export type PacienteUpdateManyMutationInput = {
 export type PacienteUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   cpf?: Prisma.StringFieldUpdateOperationsInput | string
-  nome?: Prisma.StringFieldUpdateOperationsInput | string
-  dataNascimento?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  nome?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dataNascimento?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   atualizadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -355,6 +355,14 @@ export type StringFieldUpdateOperationsInput = {
   set?: string
 }
 
+export type NullableStringFieldUpdateOperationsInput = {
+  set?: string | null
+}
+
+export type NullableDateTimeFieldUpdateOperationsInput = {
+  set?: Date | string | null
+}
+
 export type DateTimeFieldUpdateOperationsInput = {
   set?: Date | string
 }
@@ -392,8 +400,8 @@ export type PacienteUpdateOneWithoutLogsNestedInput = {
 export type PacienteCreateWithoutCheckinsInput = {
   id?: string
   cpf: string
-  nome: string
-  dataNascimento: Date | string
+  nome?: string | null
+  dataNascimento?: Date | string | null
   criadoEm?: Date | string
   atualizadoEm?: Date | string
   logs?: Prisma.LogCreateNestedManyWithoutPacienteInput
@@ -402,8 +410,8 @@ export type PacienteCreateWithoutCheckinsInput = {
 export type PacienteUncheckedCreateWithoutCheckinsInput = {
   id?: string
   cpf: string
-  nome: string
-  dataNascimento: Date | string
+  nome?: string | null
+  dataNascimento?: Date | string | null
   criadoEm?: Date | string
   atualizadoEm?: Date | string
   logs?: Prisma.LogUncheckedCreateNestedManyWithoutPacienteInput
@@ -428,8 +436,8 @@ export type PacienteUpdateToOneWithWhereWithoutCheckinsInput = {
 export type PacienteUpdateWithoutCheckinsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   cpf?: Prisma.StringFieldUpdateOperationsInput | string
-  nome?: Prisma.StringFieldUpdateOperationsInput | string
-  dataNascimento?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  nome?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dataNascimento?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   atualizadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   logs?: Prisma.LogUpdateManyWithoutPacienteNestedInput
@@ -438,8 +446,8 @@ export type PacienteUpdateWithoutCheckinsInput = {
 export type PacienteUncheckedUpdateWithoutCheckinsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   cpf?: Prisma.StringFieldUpdateOperationsInput | string
-  nome?: Prisma.StringFieldUpdateOperationsInput | string
-  dataNascimento?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  nome?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dataNascimento?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   atualizadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   logs?: Prisma.LogUncheckedUpdateManyWithoutPacienteNestedInput
@@ -448,8 +456,8 @@ export type PacienteUncheckedUpdateWithoutCheckinsInput = {
 export type PacienteCreateWithoutLogsInput = {
   id?: string
   cpf: string
-  nome: string
-  dataNascimento: Date | string
+  nome?: string | null
+  dataNascimento?: Date | string | null
   criadoEm?: Date | string
   atualizadoEm?: Date | string
   checkins?: Prisma.CheckinCreateNestedManyWithoutPacienteInput
@@ -458,8 +466,8 @@ export type PacienteCreateWithoutLogsInput = {
 export type PacienteUncheckedCreateWithoutLogsInput = {
   id?: string
   cpf: string
-  nome: string
-  dataNascimento: Date | string
+  nome?: string | null
+  dataNascimento?: Date | string | null
   criadoEm?: Date | string
   atualizadoEm?: Date | string
   checkins?: Prisma.CheckinUncheckedCreateNestedManyWithoutPacienteInput
@@ -484,8 +492,8 @@ export type PacienteUpdateToOneWithWhereWithoutLogsInput = {
 export type PacienteUpdateWithoutLogsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   cpf?: Prisma.StringFieldUpdateOperationsInput | string
-  nome?: Prisma.StringFieldUpdateOperationsInput | string
-  dataNascimento?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  nome?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dataNascimento?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   atualizadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   checkins?: Prisma.CheckinUpdateManyWithoutPacienteNestedInput
@@ -494,8 +502,8 @@ export type PacienteUpdateWithoutLogsInput = {
 export type PacienteUncheckedUpdateWithoutLogsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   cpf?: Prisma.StringFieldUpdateOperationsInput | string
-  nome?: Prisma.StringFieldUpdateOperationsInput | string
-  dataNascimento?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  nome?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  dataNascimento?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   criadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   atualizadoEm?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   checkins?: Prisma.CheckinUncheckedUpdateManyWithoutPacienteNestedInput
@@ -598,8 +606,8 @@ export type $PacientePayload<ExtArgs extends runtime.Types.Extensions.InternalAr
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
     cpf: string
-    nome: string
-    dataNascimento: Date
+    nome: string | null
+    dataNascimento: Date | null
     criadoEm: Date
     atualizadoEm: Date
   }, ExtArgs["result"]["paciente"]>

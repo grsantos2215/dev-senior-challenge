@@ -3,7 +3,10 @@ import { ConfigService } from "@nestjs/config";
 import { ClientRMQ } from "@nestjs/microservices";
 import { randomUUID } from "node:crypto";
 
-export const CHECKIN_EXCHANGE = "checkin.events";
+import { CHECKIN_EXCHANGE } from "./fila";
+
+export { CHECKIN_EXCHANGE };
+
 export const CHECKIN_CREATED_ROUTING_KEY = "checkin.created";
 export const RMQ_CLIENT = Symbol("RMQ_CLIENT");
 

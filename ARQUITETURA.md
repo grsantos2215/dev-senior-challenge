@@ -45,6 +45,12 @@ desenho/documentação. Por quê._
     - O Prisma não versiona índice parcial → o
       `CREATE INDEX ... WHERE publicado_em IS NULL` foi escrito à mão após a
       migration.
+- **Status: decisão tomada, ainda não implementada.** A tabela `outbox_events`
+  existe no schema, mas o check-in publica `checkin.created` direto por
+  `CheckinEventsPublisher`, sem transação e sem dispatcher. Ou seja: **a janela
+  de perda que motivou este ADR continua aberta.** Não estou fingindo o
+  contrário — o ADR fica como contrato do que falta, e o publish direto é o que
+  roda.
 
 ### ADR 2 - Log append-only
 
@@ -234,9 +240,160 @@ desenho/documentação. Por quê._
       `status IN ('AGUARDANDO','EM_ATENDIMENTO')`, e `CANCELADO` nunca entra
       nessa contagem desde a migration anterior.
 
-_(Temas sugeridos pelo enunciado que ainda não têm ADR: estratégia de
-resiliência do cadastro REST — timeout, retry/backoff, circuit breaker, cache —
-e o tratamento de `429`; health checks e métricas.)_
+### ADR 8 - Enriquecimento de paciente fora do caminho da request
+
+- **Contexto:** `GetOrCreatePaciente` precisa do nome e da data de nascimento do
+  paciente, mas o mock de cadastro responde ~600ms, falha ~10% das vezes e
+  limita a 5 requisições por 10s por IP. Chamar isso dentro da request custava
+  600ms em **toda** recepção e, no pior caso, deixava um erro de terceiro
+  decidir se o paciente entra. Como o CPF já vem do cadastro do paciente, o nome
+  é _enriquecimento_, não requisito: dá para gravar o paciente primeiro e
+  completar depois.
+- **Decisão:** a request grava o paciente em estado degradado
+  (`cadastroConfirmado = false`) e enfileira `{ pacienteId, tentativa }` na fila
+  durável `cadastro.enriquecer`. O payload leva **só o id**: quem enfileira não
+  conhece o CPF, e o consumidor lê o paciente do banco. Nenhum dado pessoal no
+  payload (ADR 3). O consumidor é idempotente
+  `if (paciente.cadastroConfirmado) return`, então reenfileirar é seguro e é o
+  caminho normal.
+- **Alternativas consideradas:**
+    - Síncrono, com retry: preserva a resposta completa e é o que o fluxo
+      original fazia. Descartado porque amarra o tempo de atendimento da
+      recepção à disponibilidade de um sistema que só enriquece.
+    - Gravar o paciente e enriquecer na sequência, sem fila: se o processo morre
+      entre o commit e a chamada, o paciente fica degradado para sempre e
+      ninguém percebe. É a mesma janela de perda do ADR 1, em escala menor.
+    - Marcar "pendência" numa tabela e varrer por polling: entrega o mesmo
+      desenho com menos peças, e mais um `SELECT` no caminho do check-in. A fila
+      dá o mesmo resultado com retry e DLQ prontos.
+- **Consequências:**
+    - A request deixa de depender dos 600ms do cadastro, **mas não deixa de
+      depender do broker**: `ClientRMQ.emit` é request/reply, então
+      `enfileirar()` espera a resposta do consumidor. É um round-trip de ms, não
+      de 600ms, e é um acoplamento que precisa de timeout antes de produção.
+      Hoje não há, e `emit` sem consumidor estoura a request.
+    - A degradação virou estado observável em vez de erro:
+      `enriquecimentoPendente` no retorno e `cadastroConfirmado` no banco. Quem
+      lê o paciente consegue dizer "ainda não".
+    - A entrega é at-least-once, então a idempotência não é opcional
+      (consequência herdada do ADR 3).
+    - **A fila não melhorou o rate limit.** 5 req/10s por IP continua valendo.
+      Quem controla o ritmo é o pacing do consumidor.
+
+### ADR 9 - Resiliência da integração com o cadastro REST
+
+- **Contexto:** mesma situação do ADR 8: dependência externa lenta, instável e
+  com limite de taxa. O enunciado pergunta o que fazer quando ela cai, e a
+  resposta para o caso foi "continuar e sinalizar".
+- **Decisão:** timeout explícito (`HTTP_TIMEOUT_MS` via `AbortSignal`) e falha
+  classificada em três erros de domínio, porque eles têm consumidores
+  diferentes: `CadastroRateLimitado` (429), `CadastroIndisponivel` (5xx e
+  timeout) e `PacienteNaoEncontrado` (404). As duas primeiras valem retry; a
+  terceira é definitiva. O ritmo é imposto no cliente — `prefetchCount: 1` e
+  intervalo mínimo de 2200ms entre chamadas — em vez de tentar negociar com o
+  mock.
+- **Alternativas consideradas:**
+    - Sem timeout: herda o default do axios, que pode passar de minutos e segura
+      uma conexão do pool esse tempo todo.
+    - Retry exponencial com jitter: é a escolha certa para falha transitória em
+      geral, mas aqui existe um limite artificial e determinístico; backoff
+      multiplicaria tentativas contra um teto que não cede.
+    - Confiar no rate limit do servidor e ir no máximo: com limite de 5 por 10s,
+      o quinto check-in leva a resposta com 429 e vira retry.
+    - **Circuit breaker:** descartado por ora. Com pacing de 2,2s, teto de 3
+      tentativas e reenfileiramento, o ganho é pequeno e o custo é um estado a
+      mais para justificar o corte. Reavaliar quando houver erro sustentado.
+    - **Cache de resposta do cadastro:** descartado. O dado praticamente não
+      muda, mas cache aqui exige invalidação num serviço que já degrada de
+      propósito.
+- **Consequências:**
+    - O pacing é por instância. Duas réplicas dividida por 2,2s cada uma somam
+      mais que o pretendido; num ambiente real o intervalo precisaria ser
+      coordenado, e o broker resolve isso com consumer único ou prefetch baixo.
+    - Erro inesperado no adapter **não** vira retry: vira log e paciente
+      degradado. Um bug de programação não pode virar loop quente.
+
+### ADR 10 - Fila durável
+
+- **Contexto:** no ADR 3 eu documentei o lado do publisher. O lado do consumidor
+  tem uma armadilha que só aparece em produção: com `wildcards: true`, o
+  `ClientRMQ` declara **só o exchange** e nunca cria fila nem binding
+  (client-rmq.ts, ramo `else` de `setupChannel`). Publicar em exchange sem fila
+  bindada **não dá erro**, o broker aceita e descarta. O sintoma é um paciente
+  que nunca ganha nome, sem log e sem métrica.
+- **Decisão:** exchange `checkin.events` (topic) + fila `cadastro.enriquecer` +
+  DLQ `cadastro.enriquecer.dlq`, todas duráveis. `opcoesFilaEnriquecimento()` é
+  a fonte única dos argumentos da fila. A fila principal é declarada pelo
+  próprio `ServerRMQ`, via `queueOptions` em `connectMicroservice`; a DLQ é
+  declarada por `TopologiaEnriquecimento`, no `onApplicationBootstrap`.
+- **Alternativas consideradas:**
+    - Declarar tudo em `onApplicationBootstrap`: **não funciona.** `queue.bind`
+      e `queue.consume` exigem fila existente, e o consumidor começa em
+      `startAllMicroservices()`, que roda antes de `listen()`, logo antes de
+      qualquer `onApplicationBootstrap`. Foi exatamente o crash observado
+      (`NOT_FOUND - no queue 'cadastro.enriquecer'`).
+    - `noAssert: true` declarando a fila por fora: o `ServerRMQ` usaria o nome
+      sem declarar, mas o bind continua exigindo fila existente. Não remove a
+      dependência de ordem, só troca uma falha de execução por outra.
+    - Declarar a topologia no compose, fora do app: funciona, mas tira a
+      topologia do versionamento e da review, e a faz divergir do código.
+    - `emit` (request/reply) em vez de `publish` (fire-and-forget) no publisher:
+      `emit` espera a resposta do consumidor, então fila ausente ou consumidor
+      parado aparece como erro em vez de descarte silencioso. O custo é o
+      acoplamento do ADR 8.
+- **Consequências:**
+    - **O broker exige argumentos idênticos a cada declaração da fila.**
+      Divergir no `x-dead-letter-exchange` dá 406 PRECONDITION_FAILED e derruba
+      o canal. Por isso `opcoesFilaEnriquecimento()` é compartilhado entre a app
+      e a função de topologia: se divergirem, a API não sobe.
+    - **A DLQ não é usada hoje.** Ela só recebe o que o broker dead-letteriza
+      (nack sem requeue), e o consumidor faz `ack` ao desistir na terceira
+      tentativa. O que existe é log em `warn` com o motivo da desistência. A DLQ
+      está como rede para quem passar a fazer `nack`, **não deve ser considerada
+      como observabilidade funcionando.**
+    - `prefetchCount: 1` dá backpressure de verdade: uma mensagem em voo por
+      instância, e o burst contra o mock fica limitado por construção.
+    - `wildcards: true` no `ServerRMQ` faz o Nest usar a routing key da mensagem
+      como pattern do `@EventPattern`, **e** bindar a fila em cada pattern
+      registrado. São dois efeitos no mesmo booleano.
+
+### ADR 11 - ESM com os aliases resolvidos no pós-build
+
+- **Contexto:** o projeto é ESM (`"type": "module"`,
+  `moduleResolution: bundler`) e usa alias `@/`. O Node exige caminho relativo
+  **com** extensão em `import`, e o TS em modo `bundler` não exige e não emite
+  nada que resolva alias. As duas regras colidem: a fonte não pode ter `.js`, e
+  o `dist` precisa ter.
+- **Decisão:** `scripts/fix-esm-specifiers.mjs` roda **depois** de `nest build`
+  e reescreve, só dentro do `dist`: `@/x` vira caminho relativo, e todo import
+  relativo ganha `.js`. Nenhum import em `src/` tem extensão.
+- **Alternativas consideradas:**
+    - `tsconfig.paths` + `tsc-alias`: funciona, mas o `nest build` não roda o
+      `tsc-alias`, então depende de alguém lembrar do passo extra.
+    - Loader hook do Node (`--import`): resolve em runtime e traria o watch de
+      volta sem script nenhum. Descartado porque entra na frente de todo import
+      e paga custo de cold start, além de mascarar o problema em vez de buildar
+      certo.
+    - `dist` em CommonJS: brigaria com `__dirname` e top-level await.
+    - Renunciar aos aliases e usar caminhos relativos em tudo: resolve o
+      problema, e é o que não fiz porque `@/` é o que torna a árvore navegável.
+- **Consequências:**
+    - **O build é um script, não um comando.** `pnpm build` é a unidade real de
+      build; qualquer caminho novo de execução, `start`, `start:dev`, Docker
+      precisa passar por ele. O `Dockerfile` herda isso direto, porque roda
+      `pnpm start:dev`.
+    - `start:dev` deixou de ser `nest start --watch` e virou `scripts/dev.mjs`,
+      que faz build → pós-build → restart do processo. O watch do Nest CLI
+      reinicia o app sem passar pelo pós-build, e a API morre com
+      `ERR_MODULE_NOT_FOUND`.
+    - O script é idempotente: rodar duas vezes não muda nada, o que o torna
+      seguro num loop de watch.
+    - O `dev.mjs` faz polling de `mtime` em vez de `fs.watch` recursivo, que em
+      Linux depende da versão do Node e ainda erra em bind mount de container.
+
+_(Temas sugeridos pelo enunciado que ainda não têm ADR: health checks e
+métricas; circuit breaker e cache do cadastro REST, hoje descartados por decisão
+no ADR 9.)_
 
 ## Segurança & LGPD
 

@@ -545,14 +545,6 @@ export type EnumStatusAgendamentoFieldUpdateOperationsInput = {
   set?: $Enums.StatusAgendamento
 }
 
-export type NullableStringFieldUpdateOperationsInput = {
-  set?: string | null
-}
-
-export type NullableDateTimeFieldUpdateOperationsInput = {
-  set?: Date | string | null
-}
-
 export type CheckinCreateNestedOneWithoutOutboxInput = {
   create?: Prisma.XOR<Prisma.CheckinCreateWithoutOutboxInput, Prisma.CheckinUncheckedCreateWithoutOutboxInput>
   connectOrCreate?: Prisma.CheckinCreateOrConnectWithoutOutboxInput
