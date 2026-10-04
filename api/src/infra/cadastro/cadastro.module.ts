@@ -19,6 +19,7 @@ const ENRIQUECIMENTO_CADASTRO_PORT = Symbol('ENRIQUECIMENTO_CADASTRO_PORT')
 
 @Module({
     imports: [DatabaseModule, MessagingModule, ExternConnectionsModule],
+    controllers: [CadastroEnriquecimentoConsumidor],
     providers: [
         GetOrCreatePaciente,
 
@@ -39,8 +40,6 @@ const ENRIQUECIMENTO_CADASTRO_PORT = Symbol('ENRIQUECIMENTO_CADASTRO_PORT')
             provide: EnriquecimentoDeCadastroPort,
             useExisting: ENRIQUECIMENTO_CADASTRO_PORT,
         },
-
-        CadastroEnriquecimentoConsumidor,
     ],
     exports: [
         GetOrCreatePaciente,

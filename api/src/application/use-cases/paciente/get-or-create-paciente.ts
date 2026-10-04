@@ -1,5 +1,6 @@
+import { Injectable, Logger } from '@nestjs/common'
+
 import { EnriquecimentoDeCadastroPort } from '@/application/services/cadastro-de-paciente/enriquecimento-cadastro.port'
-import { Injectable } from '@nestjs/common'
 import { Paciente } from '@/application/entities/paciente'
 import { PacienteRepository } from '@/application/repositories/paciente-repository'
 
@@ -19,6 +20,8 @@ interface GetOrCreatePacienteResponse {
 
 @Injectable()
 export class GetOrCreatePaciente {
+    private readonly logger = new Logger(GetOrCreatePaciente.name)
+
     constructor(
         private pacienteRepository: PacienteRepository,
         private enriquecimento: EnriquecimentoDeCadastroPort,
@@ -36,9 +39,19 @@ export class GetOrCreatePaciente {
 
         const paciente = local ?? (await this.criarDegradado(cpf))
 
-        await this.enriquecimento.enfileirar(paciente.id)
+        await this.pedirEnriquecimento(paciente.id)
 
         return { paciente, enriquecimentoPendente: true }
+    }
+
+    private async pedirEnriquecimento(pacienteId: string): Promise<void> {
+        try {
+            await this.enriquecimento.enfileirarSemBloquear(pacienteId)
+        } catch (erro) {
+            this.logger.warn(
+                `enriquecimento de pacienteId=${pacienteId} não enfileirou: ${(erro as Error).message}`,
+            )
+        }
     }
 
     private async criarDegradado(cpf: string): Promise<Paciente> {

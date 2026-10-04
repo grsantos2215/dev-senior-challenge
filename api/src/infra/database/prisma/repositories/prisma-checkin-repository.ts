@@ -1,7 +1,8 @@
 import { CheckIn } from '@/application/entities/checkin'
+import { CheckInJaAberto } from '@/application/use-cases/check-in/errors/check-in-ja-aberto'
 import { CheckInRepository } from '@/application/repositories/checkin-repository'
-import { Prisma } from '@/generated/prisma/client'
 import { Injectable } from '@nestjs/common'
+import { Prisma } from '@/generated/prisma/client'
 import { PrismaCheckInMapper } from '../mappers/prisma-checkin-mapper'
 import { PrismaService } from '../prisma.service'
 
@@ -33,22 +34,31 @@ export class PrismaCheckInRepository implements CheckInRepository {
     async create(checkIn: CheckIn): Promise<void> {
         const raw = PrismaCheckInMapper.toPrisma(checkIn)
 
-        await this.prisma.checkin.create({
-            data: raw,
-        })
+        try {
+            await this.prisma.checkin.create({
+                data: raw,
+            })
+        } catch (erro) {
+            throw this.tratarViolacaoDeUnicidade(erro, checkIn)
+        }
     }
 
-    /**
-     * Update-only e silencioso quando a linha não existe, como no
-     * `InMemoryNotificationsRepository`, que só substitui se achar o id.
-     *
-     * A paridade não é detalhe: um caso de uso testado contra o adapter em
-     * memória faz no-op numa linha ausente, então o adapter de banco não pode
-     * divergir — senão o teste passa e a produção quebra.
-     *
-     * `updateMany` não resolve sozinho: nesta versão do Prisma ele também lança
-     * P2025 quando nada casa, então o no-op precisa ser explícito.
-     */
+    private tratarViolacaoDeUnicidade(
+        erro: unknown,
+        checkIn: CheckIn,
+    ): unknown {
+        if (
+            erro instanceof Prisma.PrismaClientKnownRequestError &&
+            erro.code === 'P2002'
+        )
+            return new CheckInJaAberto(
+                checkIn.pacienteId,
+                checkIn.dataReferencia,
+            )
+
+        return erro
+    }
+
     async save(checkIn: CheckIn): Promise<void> {
         const { id, ...dados } = PrismaCheckInMapper.toPrisma(checkIn)
 

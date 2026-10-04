@@ -1,7 +1,7 @@
 import { Controller, Get, Param, Query } from "@nestjs/common";
-import { AppService } from "./app.service.js";
+import { AppService } from "./app.service";
 import axios from "axios";
-import { convertXmlToJson } from "./lib/xml-converter.js";
+import { convertXmlToJson } from "./lib/xml-converter";
 
 @Controller()
 export class AppController {

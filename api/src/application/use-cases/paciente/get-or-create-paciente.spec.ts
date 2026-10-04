@@ -37,6 +37,10 @@ class FakeEnriquecimento extends EnriquecimentoDeCadastroPort {
     async enfileirar(pacienteId: string): Promise<void> {
         this.pedidos.push(pacienteId)
     }
+
+    async enfileirarSemBloquear(pacienteId: string): Promise<void> {
+        this.pedidos.push(pacienteId)
+    }
 }
 
 describe('GetOrCreatePaciente', () => {
@@ -115,14 +119,28 @@ describe('GetOrCreatePaciente', () => {
     })
 
     describe('falha ao enfileirar', () => {
-        it('propaga, para o check-in não fingir que o nome vai chegar', async () => {
+        it('não derruba o paciente: a fila é enriquecimento, não o check-in', async () => {
             const quebrado = new FakeEnriquecimento()
-            quebrado.enfileirar = async () => {
+            quebrado.enfileirarSemBloquear = async () => {
                 throw new Error('broker fora')
             }
             sut = new GetOrCreatePaciente(repo, quebrado)
 
-            await expect(sut.execute({ cpf: CPF })).rejects.toThrow(
+            const { paciente, enriquecimentoPendente } = await sut.execute({
+                cpf: CPF,
+            })
+
+            expect(paciente.id).toBeDefined()
+            expect(enriquecimentoPendente).toBe(true)
+        })
+
+        it('a falha engolida é do caminho best-effort, não do reenvio do consumidor', async () => {
+            const quebrado = new FakeEnriquecimento()
+            quebrado.enfileirar = async () => {
+                throw new Error('broker fora')
+            }
+
+            await expect(quebrado.enfileirar('qualquer')).rejects.toThrow(
                 'broker fora',
             )
         })

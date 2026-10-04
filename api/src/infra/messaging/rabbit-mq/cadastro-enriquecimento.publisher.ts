@@ -1,10 +1,8 @@
 import { EnriquecimentoDeCadastroPort } from '@/application/services/cadastro-de-paciente/enriquecimento-cadastro.port'
-import { Inject, Injectable, Logger } from '@nestjs/common'
-import { ClientRMQ } from '@nestjs/microservices'
-import { firstValueFrom } from 'rxjs'
+import { Injectable, Logger } from '@nestjs/common'
 
 import { CADASTRO_ENRIQUECIMENTO_ROUTING_KEY } from './fila'
-import { RMQ_CLIENT } from './checkin-events.publisher'
+import { RabbitPublisher } from '../rabbit-publisher'
 
 export { CADASTRO_ENRIQUECIMENTO_ROUTING_KEY }
 
@@ -19,7 +17,7 @@ export const MAX_TENTATIVAS = 3
 export class CadastroEnriquecimentoPublisher extends EnriquecimentoDeCadastroPort {
     private readonly logger = new Logger(CadastroEnriquecimentoPublisher.name)
 
-    constructor(@Inject(RMQ_CLIENT) private readonly client: ClientRMQ) {
+    constructor(private readonly publisher: RabbitPublisher) {
         super()
     }
 
@@ -27,15 +25,30 @@ export class CadastroEnriquecimentoPublisher extends EnriquecimentoDeCadastroPor
         const mensagem: MensagemEnriquecimento = { pacienteId, tentativa }
 
         try {
-            await firstValueFrom(
-                this.client.emit(CADASTRO_ENRIQUECIMENTO_ROUTING_KEY, mensagem),
+            await this.publisher.publicarOuFalhar(
+                CADASTRO_ENRIQUECIMENTO_ROUTING_KEY,
+                mensagem,
             )
         } catch (erro) {
             this.logger.error(
-                `falha ao enfileirar enriquecimento pacienteId=${pacienteId} tentativa=${tentativa}`,
+                `falha ao reenfileirar enriquecimento pacienteId=${pacienteId} tentativa=${tentativa}`,
                 erro instanceof Error ? erro.stack : undefined,
             )
-            throw erro
+        }
+    }
+
+    async enfileirarSemBloquear(pacienteId: string): Promise<void> {
+        try {
+            await this.publisher.publicar(CADASTRO_ENRIQUECIMENTO_ROUTING_KEY, {
+                pacienteId,
+                tentativa: 1,
+            } satisfies MensagemEnriquecimento)
+        } catch (erro) {
+            this.logger.warn(
+                `enfileiramento de enriquecimento falhou pacienteId=${pacienteId}: ${
+                    erro instanceof Error ? erro.message : String(erro)
+                }. O paciente fica degradado e o proximo check-in reenfileira.`,
+            )
         }
     }
 }

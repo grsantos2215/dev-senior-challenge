@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { CheckIn } from '@/application/entities/checkin'
+import { CheckInJaAberto } from '@/application/use-cases/check-in/errors/check-in-ja-aberto'
 
 import { PrismaService } from '../prisma.service'
 import { PrismaCheckInRepository } from './prisma-checkin-repository'
@@ -50,11 +51,6 @@ function novoCheckIn(
     })
 }
 
-/**
- * O round-trip NÃO pega o bug de timezone: escrever com o construtor local e
- * ler com getHours() devolve exatamente o que foi passado, enquanto o banco
- * está 3 horas errado. Por isso o teste fala com o Postgres direto.
- */
 describe('PrismaCheckInRepository (banco real)', () => {
     beforeAll(async () => {
         await prisma.onModuleInit()
@@ -210,7 +206,6 @@ describe('PrismaCheckInRepository (banco real)', () => {
             const pacienteId = await criarPaciente()
             await repo.create(novoCheckIn(pacienteId))
 
-            // O índice parcial é o que garante isto; a entidade não sabe.
             await expect(repo.create(novoCheckIn(pacienteId))).rejects.toThrow()
         })
 
@@ -332,9 +327,90 @@ describe('PrismaCheckInRepository (banco real)', () => {
             expect(await repo.countManyByPacienteId(randomUUID())).toBe(0)
         })
     })
+
+    describe('dataReferencia', () => {
+        it('grava o dia da data, e não o instante', async () => {
+            const pacienteId = await criarPaciente()
+            const checkIn = novoCheckIn(pacienteId, {
+                dataReferencia: new Date('2026-10-04T12:00:00Z'),
+            })
+
+            await repo.create(checkIn)
+
+            const [row] = await prisma.$queryRaw<{ d: string }[]>`
+                SELECT to_char(data_referencia, 'YYYY-MM-DD') AS d
+                FROM checkins WHERE id = ${checkIn.id}::uuid`
+
+            expect(row.d).toBe('2026-10-04')
+        })
+
+        it('devolve o dia como meia-noite UTC', async () => {
+            const pacienteId = await criarPaciente()
+            const checkIn = novoCheckIn(pacienteId, {
+                dataReferencia: new Date('2026-10-04T12:00:00Z'),
+            })
+
+            await repo.create(checkIn)
+
+            const lido = await repo.findById(checkIn.id)
+
+            expect(lido!.dataReferencia.toISOString()).toBe(
+                '2026-10-04T00:00:00.000Z',
+            )
+        })
+    })
+
+    describe('check-in ja aberto', () => {
+        it('rejeita o segundo check-in aberto do mesmo dia', async () => {
+            const pacienteId = await criarPaciente()
+            await repo.create(novoCheckIn(pacienteId))
+
+            await expect(repo.create(novoCheckIn(pacienteId))).rejects.toThrow(
+                'Já existe check-in aberto',
+            )
+        })
+
+        it('traduz o P2002 em CheckInJaAberto, com o paciente e a data', async () => {
+            const pacienteId = await criarPaciente()
+            const dia = new Date('2026-10-05T00:00:00Z')
+            await repo.create(novoCheckIn(pacienteId, { dataReferencia: dia }))
+
+            const erro = await repo
+                .create(novoCheckIn(pacienteId, { dataReferencia: dia }))
+                .then(() => null)
+                .catch((e: unknown) => e)
+
+            expect(erro).toBeInstanceOf(CheckInJaAberto)
+            expect((erro as CheckInJaAberto).pacienteId).toBe(pacienteId)
+            expect((erro as CheckInJaAberto).dataReferencia).toEqual(dia)
+        })
+
+        it('aceita um segundo check-in no mesmo dia se o primeiro fechou', async () => {
+            const pacienteId = await criarPaciente()
+            const primeiro = novoCheckIn(pacienteId)
+            await repo.create(primeiro)
+
+            primeiro.iniciado()
+            primeiro.finalizado()
+            await repo.save(primeiro)
+
+            await expect(repo.create(novoCheckIn(pacienteId))).resolves.toBeUndefined()
+            expect(await repo.countManyByPacienteId(pacienteId)).toBe(2)
+        })
+
+        it('aceita check-ins no mesmo dia para pacientes diferentes', async () => {
+            const a = await criarPaciente()
+            const b = await criarPaciente()
+
+            await repo.create(novoCheckIn(a))
+            await repo.create(novoCheckIn(b))
+
+            expect(await repo.countManyByPacienteId(a)).toBe(1)
+            expect(await repo.countManyByPacienteId(b)).toBe(1)
+        })
+    })
 })
 
-/** Primeiro check-in criado para o paciente; atalho dos testes de horario. */
 async function thisId(pacienteId: string, indice: number): Promise<string> {
     const [row] = await prisma.$queryRaw<{ id: string }[]>`
         SELECT id FROM checkins

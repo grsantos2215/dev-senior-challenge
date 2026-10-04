@@ -11,6 +11,6 @@ import { PrismaService } from './prisma/prisma.service'
             useClass: PrismaCheckInRepository,
         },
     ],
-    exports: [PrismaService],
+    exports: [PrismaService, CheckInRepository],
 })
 export class DatabaseModule {}

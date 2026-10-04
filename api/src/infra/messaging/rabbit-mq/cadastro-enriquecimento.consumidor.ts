@@ -7,10 +7,11 @@ import {
     CadastroRateLimitado,
     PacienteNaoEncontrado,
 } from '@/application/services/cadastro-de-paciente/errors'
-import { Injectable, Logger } from '@nestjs/common'
+import { Logger } from '@nestjs/common'
 
 import { CadastroPort } from '@/application/services/cadastro-de-paciente/cadastro.port'
 import { ConfigService } from '@nestjs/config'
+import { Controller } from '@nestjs/common'
 import { EnriquecimentoDeCadastroPort } from '@/application/services/cadastro-de-paciente/enriquecimento-cadastro.port'
 import { EventPattern } from '@nestjs/microservices'
 import type { MensagemEnriquecimento } from '@/infra/messaging/rabbit-mq/cadastro-enriquecimento.publisher'
@@ -18,7 +19,17 @@ import { PacienteRepository } from '@/application/repositories/paciente-reposito
 
 const INTERVALO_PADRAO_MS = 2_200
 
-@Injectable()
+export type ResultadoEnriquecimento =
+    | { status: 'enriquecido' }
+    | {
+          status: 'descartado'
+          motivo: 'paciente-inexistente' | 'ja-confirmado' | 'cpf-desconhecido'
+      }
+    | { status: 'adiado'; tentativa: number }
+    | { status: 'desistido'; tentativas: number }
+    | { status: 'falha'; motivo: string }
+
+@Controller()
 export class CadastroEnriquecimentoConsumidor {
     private readonly logger = new Logger(CadastroEnriquecimentoConsumidor.name)
     private readonly intervaloMinimoMs: number
@@ -27,8 +38,6 @@ export class CadastroEnriquecimentoConsumidor {
     constructor(
         private readonly pacientes: PacienteRepository,
         private readonly cadastro: CadastroPort,
-        // A porta, e não a classe concreta: quem reenfileira só precisa saber
-        // enfileirar, e o token já está ligado no módulo.
         private readonly publisher: EnriquecimentoDeCadastroPort,
         config: ConfigService,
     ) {
@@ -38,7 +47,9 @@ export class CadastroEnriquecimentoConsumidor {
     }
 
     @EventPattern(CADASTRO_ENRIQUECIMENTO_ROUTING_KEY)
-    async handle(mensagem: MensagemEnriquecimento): Promise<void> {
+    async handle(
+        mensagem: MensagemEnriquecimento,
+    ): Promise<ResultadoEnriquecimento> {
         const { pacienteId, tentativa } = mensagem
 
         const paciente = await this.pacientes.findById(pacienteId)
@@ -47,12 +58,12 @@ export class CadastroEnriquecimentoConsumidor {
             this.logger.warn(
                 `paciente ${pacienteId} nao existe mais, descarto enriquecimento`,
             )
-            return
+            return { status: 'descartado', motivo: 'paciente-inexistente' }
         }
 
-        // Idempotência: reenfileirar é normal e esperado, então o consumidor
-        // pode receber o mesmo paciente várias vezes.
-        if (paciente.cadastroConfirmado) return
+        if (paciente.cadastroConfirmado) {
+            return { status: 'descartado', motivo: 'ja-confirmado' }
+        }
 
         await this.aguardarTurno()
 
@@ -63,7 +74,7 @@ export class CadastroEnriquecimentoConsumidor {
                 this.logger.warn(
                     `cadastro nao conhece o cpf=${paciente.cpf}, fica degradado`,
                 )
-                return
+                return { status: 'descartado', motivo: 'cpf-desconhecido' }
             }
 
             paciente.nome = cadastrado.nome
@@ -73,8 +84,9 @@ export class CadastroEnriquecimentoConsumidor {
             this.logger.log(
                 `cadastro enriquecido pacienteId=${pacienteId} tentativa=${tentativa}`,
             )
+            return { status: 'enriquecido' }
         } catch (erro) {
-            await this.tratarFalha(erro, pacienteId, tentativa)
+            return await this.tratarFalha(erro, pacienteId, tentativa)
         }
     }
 
@@ -82,36 +94,32 @@ export class CadastroEnriquecimentoConsumidor {
         erro: unknown,
         pacienteId: string,
         tentativa: number,
-    ): Promise<void> {
+    ): Promise<ResultadoEnriquecimento> {
         const conhecido =
             erro instanceof CadastroRateLimitado ||
             erro instanceof CadastroIndisponivel ||
             erro instanceof PacienteNaoEncontrado
 
         if (!conhecido) {
-            // Bug no adapter não vira retry infinito. Log e deixa o paciente
-            // degradado; o próximo check-in reenfileira.
             this.logger.error(
                 `falha inesperada enriquecendo pacienteId=${pacienteId}`,
                 erro instanceof Error ? erro.stack : undefined,
             )
-            return
+            return { status: 'falha', motivo: (erro as Error).message }
         }
 
         if (tentativa >= MAX_TENTATIVAS) {
             this.logger.warn(
                 `desisto de enriquecer pacienteId=${pacienteId} apos ${tentativa} tentativas: ${(erro as Error).message}`,
             )
-            return
+            return { status: 'desistido', tentativas: tentativa }
         }
 
-        // Reenfileira em vez de reenviar direto: a mensagem volta pela fila,
-        // então o ritmo do `aguardarTurno` volta a valer. Reenviar direto
-        // viraria loop quente contra o rate limit.
         this.logger.warn(
             `reenfileiro pacienteId=${pacienteId} tentativa=${tentativa + 1}: ${(erro as Error).message}`,
         )
         await this.publisher.enfileirar(pacienteId, tentativa + 1)
+        return { status: 'adiado', tentativa: tentativa + 1 }
     }
 
     private async aguardarTurno(): Promise<void> {

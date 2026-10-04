@@ -7,7 +7,7 @@ interface GetCheckInRequest {
 }
 
 interface GetCheckInResponse {
-    checkin: CheckIn | null
+    checkIn: CheckIn | null
 }
 
 @Injectable()
@@ -17,8 +17,8 @@ export class GetCheckIn {
     async execute(request: GetCheckInRequest): Promise<GetCheckInResponse> {
         const { checkinId } = request
 
-        const checkin = await this.checkinRepository.findById(checkinId)
+        const checkIn = await this.checkinRepository.findById(checkinId)
 
-        return { checkin }
+        return { checkIn }
     }
 }
