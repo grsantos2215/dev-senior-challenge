@@ -12,7 +12,7 @@ import {
 } from '@/application/services/cadastro-de-paciente/errors'
 import { PacienteRepository } from '@/application/repositories/paciente-repository'
 import { Paciente } from '@/application/entities/paciente'
-import { FakeAuditoria } from '@/helpers/fake-auditoria'
+import { FakeAuditoria } from '@test/support/fake-auditoria'
 import { ConfigService } from '@nestjs/config'
 
 import { CadastroEnriquecimentoConsumidor } from './cadastro-enriquecimento.consumidor'

@@ -1,5 +1,5 @@
 {
-    "include": ["src/**/*", "src/@types"],
+    "include": ["src/**/*", "src/@types", "test/**/*"],
     "compilerOptions": {
         "module": "preserve",
         "moduleResolution": "bundler",
@@ -19,7 +19,8 @@
         "skipLibCheck": true,
         "strict": true,
         "paths": {
-            "@/*": ["./src/*"]
+            "@/*": ["./src/*"],
+            "@test/*": ["./test/*"]
         },
         "strictPropertyInitialization": false,
         "types": ["vitest/globals", "node"],

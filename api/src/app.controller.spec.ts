@@ -1,6 +1,6 @@
 import { AuditoriaPort } from '@/application/services/auditoria/auditoria.port'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { FakeAuditoria } from '@/helpers/fake-auditoria'
+import { FakeAuditoria } from '@test/support/fake-auditoria'
 import { Test, TestingModule } from '@nestjs/testing'
 import nock from 'nock'
 

@@ -6,13 +6,87 @@
 
 ## Visão geral
 
-_Um diagrama (pode ser ASCII) ou uma descrição do desenho: componentes, fluxo de
-um check-in de ponta a ponta, onde entram os serviços externos e a mensageria._
+Uma API de recepção de check-in em NestJS sobre Fastify e Postgres. O desenho
+inteiro gira em torno de uma escolha: **nada que não seja essencial para atender
+o paciente está no caminho da request.** O que é enriquecimento vai para fila.
+
+```
+   POST /check-ins { cpf }
+          |
+          v
+   +----------------------------------------------+
+   |  CheckInController -> CreateCheckIn           |
+   |      |                                       |
+   |      +-- GetOrCreatePaciente (INSERT, degradado|
+   |      |     se o cadastro falhar)              |
+   |      |                                       |
+   |      +---> publica checkin.created  ----------+--> exchange checkin.events
+   |      |                                       |      (topic)
+   |      +---> enfileira { pacienteId, tentativa }|
+   |              |                                |
+   |              v                                |
+   |      cadastro.enriquecer  (duravel, prefetch 1)
+   |              |                                |
+   |              v                                |
+   |   CadastroEnriquecimentoConsumidor            |
+   |      -> mock de cadastro (~600ms, 10% falha) |
+   |      -> enriquece ou reinsere (max 3)         |
+   +----------------------------------------------+
+          |
+          v
+   Postgres: checkins + pacientes + logs (append-only)
+```
+
+Os dois sistemas externos entram **fora** do caminho da request:
+
+- **Cadastro de pacientes** (mock HTTP, ~600ms, 12% de falha, 5 req/10s por IP):
+  consultado pelo consumidor da fila, nunca pela request. A request grava o
+  paciente em estado degradado (`cadastroConfirmado = false`) e segue.
+- **Legado de agendamento** (XML, ~800ms, falha 10%): consultado dentro da
+  request porque o tri-state `statusAgendamento` é o dado, não enriquecimento.
+
+O ciclo de vida do check-in tem quatro eventos de domínio, publicados no mesmo
+exchange `checkin.events`: `checkin.created`, `checkin.iniciado`,
+`checkin.finalizado` e `checkin.cancelado`. Cada transição é um use case, e as
+regras de estado vivem na entidade: `finalizado()` exige `iniciadoEm`, e tanto
+`finalizado()` como `cancelar()` são idempotentes quando `finalizadoEm` já
+existe. Repetir uma transição devolve `eventoId: null` e não publica de novo.
 
 ## Recorte
 
-_O que você escolheu implementar de fato (a fatia vertical) e o que deixou como
-desenho/documentação. Por quê._
+**Implementado de fato:**
+
+- `POST /check-ins` com CPF, incluindo a proteção de check-in aberto por dia
+  (índice parcial único) e o `409` que devolve o `pacienteId` e a
+  `dataReferencia` do registro que colidiu.
+- `GET /agendamentos`, proxy do legado com conversão de XML.
+- Enriquecimento de paciente assíncrono, com retry, descarte de erro permanente
+  e pacing para respeitar o rate limit.
+- Ciclo de vida do check-in como use cases: `CreateCheckIn`, `StartCheckIn`,
+  `FinalizarCheckIn` e `CancelarCheckIn`, com as regras de transição e a
+  idempotência garantidas na entidade.
+- Publicação dos quatro eventos de check-in, sem PII no payload.
+- Log append-only com `acao` estruturada, `contexto` em jsonb e trigger que
+  recusa `UPDATE`/`DELETE`.
+- Topologia de mensageria declarativa e verificada contra o broker, com testes
+  que publicam de verdade.
+
+**Deixado como desenho, deliberadamente:**
+
+- **O dispatcher do outbox (ADR 1).** A tabela existe, o ADR inteiro existe, o
+  código não. Publicar direto é o que roda, e a janela de perda que motivou o
+  ADR continua aberta. Não implementei porque o enunciado não pede consistência
+  transacional com o broker, e um poller sem caso real é infraestrutura para
+  manter sem ganho. Está escrito como dívida, não como escolha fechada.
+- **Circuit breaker e cache do cadastro REST** (ADR 9): o pacing de 2,2s com
+  teto de 3 tentativas já resolve o caso prático.
+- **Métricas e health check.** O enunciado não pede, e não quis inventar um
+  formato de telemetria que ninguém vai consumir. O sinal hoje é o log
+  estruturado e a profundidade das filas.
+
+**Por que o recorte é esse:** o risco do exercício não é hacer mais, é fazer
+pouco e fazer certo. Cada peça extra é uma peça que precisa de teste, de
+observabilidade e de alguém para lembrar dela às 3 da manhã.
 
 ## Decisões (ADRs)
 
@@ -58,10 +132,20 @@ desenho/documentação. Por quê._
   transições da fila e das chamadas às integrações, sem transformar o banco num
   segundo depósito de informações pessoais, como já tem na API legado.
 - **Decisão:** tabela `logs` **append-only**, com `acao` enum estruturado no
-  lugar de `mensagem` em texto livre, `contexto` em jsonb, e FK para `checkin` e
-  `paciente`. Trigger `BEFORE UPDATE OR DELETE` que levanta exceção. Sem data de
-  atualização, de propósito, pois um log não serve para ser atualizado, e sim
-  para auditoria.
+  lugar de `mensagem` em texto livre, `contexto` em jsonb, e trigger
+  `BEFORE UPDATE OR DELETE` que levanta exceção. Sem data de atualização, de
+  propósito, pois um log não serve para ser atualizado, e sim para auditoria. O
+  `checkinId` e o `pacienteId` são referência histórica **sem chave
+  estrangeira**, e a gravação é _best-effort_: se o log falhar, o fluxo de
+  negócio continua.
+- **O que entra em `contexto`:** só identificadores internos e o que explica a
+  transição (`de`, `para`, número da tentativa, nome da integração). A entidade
+  `RegistroAuditoria` recusa a construção se aparecer uma chave de dado pessoal
+  — cpf, cnpj, rg, nome, sobrenome, nascimento, email, telefone, endereço — em
+  qualquer nível de aninhamento, dentro de objetos e de arrays. A regra verifica
+  **chaves**, não valores: um CPF solto dentro de `contexto: { cpf }` entra pela
+  chave, mas heurística sobre formato de valor geraria falso positivo com um
+  campo numérico qualquer e daria falsa segurança.
 - **Alternativas consideradas:**
     - Só log em stdout (padrão do Nest): some no restart, não serve como trilha
       de auditoria.
@@ -70,15 +154,33 @@ desenho/documentação. Por quê._
     - Guardar o payload integral da integração: descartado, o XML do legado e o
       JSON do cadastro possuem informações que contradizem a LGPD (CPF, nome,
       nascimento).
+    - FK `ON DELETE SET NULL` para `checkin` e `paciente`: foi o que estava no
+      schema, e é impossível de cumprir. `SET NULL` é um `UPDATE`, então o
+      trigger bloqueia: apagar um check-in que já tinha log levantava
+      `logs sao append-only`. O efeito era transformar "não se apaga log" em
+      "não se apaga nada", inclusive na limpeza dos testes. Tirar a FK resolve:
+      o log sobreviver à entidade observada é exatamente o que um log de
+      auditoria precisa fazer.
+    - FK `RESTRICT` em vez de nenhuma: preserva a integridade referencial, mas
+      deixa o log segurar a entidade viva por um id que já cumpriu seu papel, e
+      volta a impossibilitar qualquer rotina de retenção ou de limpeza de teste.
 - **Consequências:**
-    - `contexto` é jsonb sem schema e pode virar depósito de lixo. Mitigação por
-      revisão de código: o log referencia `checkinId`, não carrega o dado do
-      paciente.
+    - `contexto` é jsonb sem schema e pode virar depósito de lixo. Mitigação em
+      duas frentes: a guarda de dado pessoal no domínio, que é testada, e o
+      `acao` enum, que já diz o que aconteceu — a mensagem em texto livre não
+      traria informação que o enum e o `contexto` não deem.
+    - Sem FK, `checkinId` pode apontar para um check-in que não existe mais. É o
+      comportamento desejado: o log registra o que aconteceu naquele momento, e
+      os índices continuam existindo para a consulta por check-in.
     - O direito ao esquecimento pede `DELETE`, e um log que recusa `DELETE` não
       atende. Resolvi da seguinte forma: como o log não guarda informações
       pessoais, ele sobrevive à eliminação do paciente sem persistir o dado.
-    - Apagar um paciente não apaga o log (`ON DELETE SET NULL`). A auditoria
-      fica correta, mas pode abrir uma lacuna com relação aos dados.
+    - Auditar é _best-effort_ de propósito. Perder um registro é ruim; perder um
+      check-in porque a tabela de log estava indisponível é pior. A falha de
+      auditoria soa no log da aplicação, não na resposta ao paciente.
+    - Não existe endpoint para ler os logs. A consulta é feita pelo repositório
+      (`findManyByCheckIn` / `findManyByPaciente`), o que evita criar superfície
+      HTTP nova sem necessidade.
 
 ### ADR 3 - RabbitMQ como topics
 
@@ -86,9 +188,16 @@ desenho/documentação. Por quê._
   reagirem (painel de senha, notificação da equipe). Precisa de desacoplamento:
   quem publica não conhece quem consome. O broker já vem no `docker-compose.yml`
   (AMQP na porta 5672).
-- **Decisão:** `@nestjs/microservices` `ClientRMQ`, topic exchange
-  `checkin.events`, routing key `checkin.created`, mensagens `persistent`, e
-  **sem informações pessoais no payload**.
+- **Decisão:** topic exchange `checkin.events` e **um canal AMQP dedicado só
+  para publicar** (`RabbitPublisher`, ver ADR 12), em vez de `ClientRMQ`. Quatro
+  routing keys, uma por evento do ciclo de vida: `checkin.created`,
+  `checkin.iniciado`, `checkin.finalizado` e `checkin.cancelado`. Mensagens
+  `persistent` e **sem informações pessoais no payload**.
+- **A inconsistência de idioma nas routing keys é minha e está de pé.** A
+  primeira ficou em inglês (`checkin.created`) e as outras três em português.
+  Renomear `checkin.created` quebraria consumidores, e routing key é contrato
+  (consequência abaixo), então não renormalizo agora: fica registrado como
+  dívida e o nome novo segue o do momento em que foi escrito.
 - **Alternativas consideradas:**
     - **MQTT:** era o que o código original usava (`ServerMqtt`). Ficou errado,
       pois o broker expõe AMQP e o plugin `rabbitmq_mqtt` não está habilitado na
@@ -273,11 +382,13 @@ desenho/documentação. Por quê._
       desenho com menos peças, e mais um `SELECT` no caminho do check-in. A fila
       dá o mesmo resultado com retry e DLQ prontos.
 - **Consequências:**
-    - A request deixa de depender dos 600ms do cadastro, **mas não deixa de
-      depender do broker**: `ClientRMQ.emit` é request/reply, então
-      `enfileirar()` espera a resposta do consumidor. É um round-trip de ms, não
-      de 600ms, e é um acoplamento que precisa de timeout antes de produção.
-      Hoje não há, e `emit` sem consumidor estoura a request.
+    - **A request deixa de depender dos 600ms do cadastro, e também deixou de
+      depender do broker para enfileirar.** A primeira versão enfileirava com
+      `ClientRMQ.emit`, que é request/reply: esperava a resposta do consumidor,
+      então `emit` sem consumidor estourava a request, e o round-trip virava
+      acoplamento sem timeout. Hoje `enfileirar()` é fire-and-forget
+      (`RabbitPublisher.publicar`) e o único caminho síncrono é o do retry, que
+      espera confirmação do broker com timeout.
     - A degradação virou estado observável em vez de erro:
       `enriquecimentoPendente` no retorno e `cadastroConfirmado` no banco. Quem
       lê o paciente consegue dizer "ainda não".
@@ -373,23 +484,26 @@ desenho/documentação. Por quê._
       teste quebra no meio, e `autoDelete` em exchange só dispara depois que
       existiu binding, o controle negativo nunca vincula nada. Sem isso o broker
       de desenvolvimento acumula lixo a cada execução.
-    - **A DLQ não recebe a desistência, mas recebe o crash do handler.** São
-      dois caminhos distintos, e a distinção importa:
-        - Na terceira tentativa o consumidor só retorna (`return` em
-          `tratarFalha`). O handler resolve, e o Nest faz `ack` automático. A
-          mensagem some sem registro além do log em `warn`, **essa desistência
-          não é recuperável por ninguém.**
-        - Se o handler **lança** fora do `try/catch` do enrichimento, o Nest faz
-          `nack` sem requeue e o broker dead-letteriza. Foi verificado no
-          broker: um payload sem o envelope `{ pattern, data }` deixa a
-          desestruturação em `handle` lançar, e a mensagem chega em
-          `cadastro.enriquecer.dlq` com `x-death.reason = "rejected"`. É a rede
-          contra crash, e ela funciona.
-
-        Ou seja: a topagem da DLQ está correta e exercitada, mas **não** deve
-        ser tratada como observabilidade da desistência. Quem precisa saber de
-        reprocessamento perdido hoje depende do log.
-
+- **A DLQ não recebe a desistência, mas recebia o crash do handler. Hoje não
+  recebe nenhum dos dois.** Com `noAck: true` (ADR 12) o broker trata a mensagem
+  como entregue no instante da entrega, então não existe `ack` para dar nem
+  `nack` para dar: crash no handler descarta a mensagem silenciosamente.
+  Verifiquei no broker: publiquei um payload sem o envelope `{ pattern, data }`,
+  que fazia a desestruturação lançar, e `cadastro.enriquecer.dlq` continuou em
+  zero. - Antes do `noAck: true` isso era diferente e **testado**: o Nest fazia
+  `nack` sem requeue, o broker dead-letterizava, e a mensagem chegava na DLQ com
+  `x-death.reason = "rejected"`. A rede contra crash existia e funcionava. Foi
+  ela que se perdeu. - O que cobre o caso hoje é retry no nível da aplicação: o
+  consumidor devolve `{ status: 'adiado' }`, reenfileira com `publicarOuFalhar`
+  e desiste em `MAX_TENTATIVAS`. Cobre falha de integração, que é o caso comum,
+  e não cobre crash de programação. - **Consequência a registar:** a topagem da
+  DLQ continua correta e ainda é exercitada pelo `fila.spec.ts`, mas **é
+  inalcançável pelo consumidor atual**. Virou contrato de topologia, não
+  observabilidade. Se ninguém consumir essa topologia em produção, a decisão
+  honesta é removê-la; mantive porque remover topologia é mudança de contrato e
+  o enunciado a pede. Fica escrito para não virar mito. - Reenfileirar continua
+  sendo seguro porque o consumidor é idempotente
+  (`if (paciente.cadastroConfirmado) return`).
     - `prefetchCount: 1` dá backpressure de verdade: uma mensagem em voo por
       instância, e o burst contra o mock fica limitado por construção.
     - `wildcards: true` no `ServerRMQ` faz o Nest usar a routing key da mensagem
@@ -430,21 +544,198 @@ desenho/documentação. Por quê._
     - O `dev.mjs` faz polling de `mtime` em vez de `fs.watch` recursivo, que em
       Linux depende da versão do Node e ainda erra em bind mount de container.
 
-_(Temas sugeridos pelo enunciado que ainda não têm ADR: health checks e
-métricas; circuit breaker e cache do cadastro REST, hoje descartados por decisão
-no ADR 9.)_
+### ADR 12 - `noAck: true` e um canal só para publicar
+
+- **Contexto:** a fila `cadastro.enriquecer` travava. O sintoma era uma fila com
+  mensagens que nunca baixavam, `messages_unacknowledged` crescendo, e o log
+  parava depois da primeira tentativa de enriquecimento. Como
+  `prefetchCount: 1`, bastava **uma** mensagem presa para travar o consumidor
+  inteiro, e nenhuma outra entrava.
+- **Causa raiz:** com `noAck: false`, o `ServerRMQ` entrega a mensagem e espera
+  um `ack` que não vinha. `handleEvent` do Nest só confirma o recebimento quando
+  o `RmqContext` chega ao handler, e com `@EventPattern` sem parâmetro de
+  contexto esse objeto não existe — logo nunca havia `ack`. Não era configuração
+  de ack: era ausência de ack. Cada mensagem ficava presa para sempre. Já tinha
+  tentado `ack()` manual, o que produzia `Channel closed` na hora seguinte.
+- **Decisão:** `noAck: true` em `connectMicroservice`, e um `RabbitPublisher`
+  com canal dedicado para publicação fire-and-forget, no lugar do
+  `ClientRMQ.emit` nos dois caminhos de enfileiramento.
+- **Alternativas consideradas:**
+    - `ack()` manual no handler: é a resposta óbvia e não funciona. O Nest já
+      gerencia o canal e o ack manual fecha o canal sob os pés do consumidor.
+    - `noAck: true` e continuar com `ClientRMQ.emit`: resolve o travamento, mas
+      `emit` é request/reply e cria fila de resposta por mensagem (`amq.gen-*`).
+      Com `emit` esperando um consumidor que não responde, o publisher pode se
+      auto-travar esperando a si mesmo.
+    - Voltar para `noAck: false` e usar `RpcPattern` com reply: troca o problema
+      pelo ADR 1: acopla a request ao consumidor, que é exatamente o que o
+      desenho da fila queria evitar.
+- **Consequências:**
+    - **A entrega passou a ser at-most-once no broker.** Com `noAck: true` não
+      há redelivery: se o processo morre no meio do handler, a mensagem se foi.
+      A tolerância a falha continua existindo, mas no nível da aplicação
+      (reenfileiramento com `tentativa`), não no broker. Ver a consequência
+      equivalente no ADR 10 sobre a DLQ.
+    - `publicarOuFalhar` espera `waitForConfirms` antes de reenfileirar, então o
+      retry não se perde num canal morto. `publicar` é fire-and-forget e engole
+      falha: quem chama no caminho da request não pode tratar erro de broker
+      como erro de negócio.
+    - **O envelope é `{ pattern, data }` e não leva `id`.** Sem `id`, o Nest não
+      cria fila de resposta, e `emit` nunca é usado. O teste
+      `rabbit-publisher.spec.ts` fixa esse formato como contrato.
+    - O teste de compatibilidade sobe um `ServerRMQ` de verdade, com fila
+      nomeada explicitamente. Nomear a fila é o que torna o teste hermético: sem
+      `queue`, o Nest usa o default e o broker gera `amq.gen-*`, e aí o teste
+      precisa adivinhar qual fila é a dele procurando "qualquer fila nova com
+      consumidor" — o que dá falso positivo quando outro teste sobe consumidor
+      em paralelo. Foi o que causou uma falha intermitente antes de o nome ser
+      explícito.
 
 ## Segurança & LGPD
 
-_Onde estão os dados sensíveis, riscos de privacidade e mitigações
-(trânsito/repouso, logs, retenção, minimização). O que você faria antes de ir
-para produção._
+**Onde estão os dados sensíveis.** O CPF é o único dado pessoal que entra na
+request (`POST /check-ins`). Nome e data de nascimento vêm do mock de cadastro e
+moram em `pacientes`. Não há CPF, nome ou nascimento em nenhum evento, em nenhum
+log e em nenhuma fila.
+
+**Minimização como regra de projeto, não como garnish.**
+
+- O payload da fila `cadastro.enriquecer` leva **só** `pacienteId` e
+  `tentativa`. Quem enfileira não conhece o CPF, e o consumidor lê o paciente do
+  banco. Se o payload levasse o CPF, a fila viraria um segundo depósito de dado
+  pessoal com retenção e backup próprios.
+- Os quatro eventos de check-in levam `checkinId`, `pacienteId` e `status`.
+  `pacienteId` é uuid interno: identifica sem revelar.
+- O `contexto` jsonb do log referencia `checkinId`, e não carrega o payload do
+  paciente nem o corpo da resposta de terceiro. Foi decisão explícita no ADR 2.
+
+**Log append-only.** `logs` tem trigger que recusa `UPDATE` e `DELETE`, então a
+trilha não pode ser reescrita por bug ou por alguém com pressa. Isso é o oposto
+de um log mutável, e é o motivo de o log referenciar id em vez de copiar dado.
+Nenhuma chave estrangeira aponta para `logs`, e as duas que apontavam para ele
+saíram: `SET NULL` é um `UPDATE`, e o trigger o bloqueia. O log é o registro de
+algo que aconteceu, não uma projeção do estado atual.
+
+**Retenção e eliminação.** O log não guarda informação pessoal, então sobrevive
+à eliminação do paciente sem persistir o dado: o `pacienteId` fica como
+referência histórica e o paciente pode ser apagado normalmente. É a resposta que
+dei ao direito ao esquecimento dentro do que o ADR 2 permite, e a lacuna
+assumida é que a existência do check-in continua visível depois da eliminação do
+paciente. Num ambiente real eu trataria isso com uma retenção por prazo, que não
+existe ainda.
+
+**O que eu faria antes de produção.**
+
+1. TLS no broker e na API. Hoje é `amqp://` e HTTP puro em rede local; em
+   produção o payload trafega CPF pela rede e isso não pode continuar.
+2. Criptografia em repouso no volume do Postgres, para o caso de o backup ser
+   extraído.
+3. Retenção por prazo no `logs`, com o que fica e o que sai decidido antes, e
+   não por volume.
+4. Auditoria de acesso ao CPF: quem pediu o quê, porque hoje o único rastro é o
+   log de transição, não o de leitura.
+5. Remover o CPF dos logs de acesso do HTTP ingress antes que ele vire o
+   depósito de dado pessoal que o ADR 2 recusou.
 
 ## Testes
 
-_Sua estratégia: o que testou, em que nível, e o que conscientemente deixou de
-fora._
+**Estratégia.** Testar contra as peças reais onde a falha seria silenciosa, e
+contra fakes onde a dependência é irrelevante. O critério: se o teste pode
+passar com a integração quebrada, ele não vale.
+
+**177 testes unitários em 15 ficheiros**, sem broker nem banco:
+
+- Entidades e use cases com repositório e porta de eventos em memória: transição
+  de estado, idempotência, `404`, pré-condição de início e ausência de
+  publicação quando o save falha. Os quatro use cases de check-in estão
+  cobertos, incluindo a asserção explícita de que a repetição **não** publica um
+  segundo evento — e de que a repetição também **não** audita, porque auditar a
+  mesma transição duas vezes seria inventar um evento que não aconteceu.
+- `registro-auditoria.spec.ts` cobre a guarda de dado pessoal: recusa cpf, nome,
+  nascimento, email e telefone, tanto em chave direta quanto aninhados em objeto
+  ou dentro de array.
+- `prisma-auditoria.repository.spec.ts` cobre a garantia de _best-effort_: um
+  `create` que falha, inclusive por violação de chave estrangeira, resolve sem
+  lançar. É o teste que sustenta a promessa de que o log não derruba o fluxo.
+- `cadastro-enriquecimento.consumidor.spec.ts` cobre a máquina de estados do
+  consumidor: `enriquecido`, `adiado` com contagem de tentativa, `desistido` em
+  `MAX_TENTATIVAS`, `descartado` para paciente inexistente e CPF desconhecido, e
+  erro inesperado virando log em vez de loop quente.
+- `app.controller.spec.ts` cobre a consulta de agendamentos contra o XML do
+  legado com `nock`, e verifica que o `cpf` da query não aparece no log.
+- `fila.spec.ts` verifica a topologia pela API de gerenciamento em vez de por
+  publicação, com um controle negativo, porque um teste de entrega que dá certo
+  não prova nada se a fila de destino puder estar errada.
+
+**38 testes e2e em 4 ficheiros**, contra Postgres e RabbitMQ do
+`docker-compose`:
+
+- `check-in.e2e-spec.ts` cria check-in real e verifica persistência,
+  enriquecimento, `409` com o `pacienteId` e `dataReferencia` do registro que
+  colidiu, e duplicidade no mesmo dia.
+- `logs.e2e-spec.ts` é a prova de que o log é append-only de verdade, contra o
+  banco: confirma que `POST /check-ins` grava `CHECKIN_CRIADO` ligado ao
+  check-in, que nenhum contexto carrega CPF ou nome, que a coluna `mensagem` não
+  existe mais, e que `UPDATE` e `DELETE` no log são recusados com
+  `logs sao append-only`. O último teste relê a linha depois da tentativa e
+  confere que ela continua intacta, porque "o comando falhou" não é o mesmo que
+  "o dado continua igual".
+- `prisma-checkin-repository.e2e-spec.ts` confere a query real contra o schema,
+  incluindo o `statusAgendamento` tri-state e o CHECK do ciclo de vida.
+- `rabbit-publisher.spec.ts` sobe um `ServerRMQ` de verdade e verifica que o
+  envelope é `{ pattern, data }`, sem `id`, `persistent`, e que o handler recebe
+  a payload. **Foi este teste que reprovou de forma intermitente** durante o
+  desenvolvimento; a causa e a correção estão no ADR 12.
+
+**Verificação manual no broker, porque não cabe em teste.** Confirmei no broker
+real que os quatro routing keys entregam o payload esperado, que a fila
+`cadastro.enriquecer` volta a zero depois do enriquecimento e que
+`cadastro.enriquecer.dlq` fica vazia. Também confirmei o comportamento
+contrário: com `noAck: true`, um payload malformado **não** chega à DLQ. É a
+consequência registrada no ADR 10, e ela só apareceu porque o broker foi
+inspecionado, não porque um teste falhou.
+
+**O que deixei conscientemente de fora.**
+
+- Teste de concorrência real sobre o índice de check-in aberto. Verifiquei o
+  conflito por requisição sequencial, que é o caminho do usuário; o teste de
+  duas requisições em paralelo contra o índice parcial ficou de fora.
+- Teste de carga. O pacing de 2,2s foi justificado por leitura do rate limit,
+  não por medição sob pressão.
+- Teste de que o log sobrevive à eliminação do paciente. O `logs.e2e-spec.ts`
+  prova que o log não impede o `DELETE` do check-in — foi o que a remoção da FK
+  resolveu — mas não há cenário que apague paciente e confira o log
+  sobrevivente, porque não há endpoint nem rotina que apague paciente em
+  produção ainda.
+- `fila.spec.ts` e a API no ar no mesmo instante: é o problema de hermeticidade
+  de que fala o ADR 10. O spec é feito para rodar com o broker, e o broker com o
+  consumer real é outra história.
 
 ## Próximos passos rumo a produção
 
-_O que falta e como você evoluiria isto._
+**Em ordem de quanto dói não ter:**
+
+1. **Dispatcher do outbox (ADR 1).** A janela de perda de evento continua
+   aberta. É o item mais importante desta lista e o único que é correção de um
+   ADR já escrito, não melhoria.
+2. **Devolver a DLQ ao que ela devia fazer**, ou removê-la. Com `noAck: true`
+   ela é inalcançável (ADR 10). As duas saídas são defensáveis; o que não é
+   defensável é deixar a topologia prometendo uma garantia que não existe.
+3. **Redelivery com garantia.** `noAck: true` trocou travamento por perda em
+   crash. O caminho é confirmação manual feita corretamente, e a forma correta
+   nesse arranjo é um `Channel` próprio por mensagem ou um consumer que gerencia
+   o próprio ack — a ser testado contra o broker, não deduzido.
+4. **Métricas e health check.** Profundidade de fila, taxa de `desistido`, tempo
+   de enriquecimento e taxa de 429 do cadastro. Hoje o sinal é o log
+   estruturado, e log não é métrica.
+5. **Rotinas de pagamento do rate limit.** O pacing é por instância; com duas
+   réplicas, o intervalo efetivo cai pela metade (ADR 9). Coordinator único ou
+   consumo serializado resolvem.
+6. **Rotas HTTP para as transições.** Os use cases existem e estão testados;
+   falta a camada HTTP em cima, e é o próximo passo natural porque o barramento
+   já emite os eventos.
+7. **Circuit breaker no cadastro**, quando o erro sustentado justificar o estado
+   extra (ADR 9).
+8. **Normalizar a linguagem das routing keys** (`checkin.created` contra as três
+   em português), em uma major version do contrato de eventos, com os
+   consumidores avisados.

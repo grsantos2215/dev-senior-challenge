@@ -13,7 +13,7 @@ import { PacienteRepository } from '@/application/repositories/paciente-reposito
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { CreateCheckIn } from './create-check-in'
-import { FakeAuditoria } from '@/helpers/fake-auditoria'
+import { FakeAuditoria } from '@test/support/fake-auditoria'
 
 const CPF = '11111111111'
 const DIA = new Date(Date.UTC(2026, 9, 4))

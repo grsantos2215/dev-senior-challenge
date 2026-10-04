@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { CheckIn } from '@/application/entities/checkin'
 import { CheckInNotFound } from './errors/check-in-not-found'
 import { CheckInRepository } from '@/application/repositories/checkin-repository'
-import { FakeAuditoria } from '@/helpers/fake-auditoria'
+import { FakeAuditoria } from '@test/support/fake-auditoria'
 import { StartCheckIn } from './start-check-in'
 
 class FakeCheckInRepository implements CheckInRepository {

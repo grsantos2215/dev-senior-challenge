@@ -8,7 +8,7 @@ import { CancelarCheckIn } from './cancelar-check-in'
 import { CheckIn } from '@/application/entities/checkin'
 import { CheckInNotFound } from './errors/check-in-not-found'
 import { CheckInRepository } from '@/application/repositories/checkin-repository'
-import { FakeAuditoria } from '@/helpers/fake-auditoria'
+import { FakeAuditoria } from '@test/support/fake-auditoria'
 
 class FakeCheckInRepository implements CheckInRepository {
     public readonly salvos: CheckIn[] = []
