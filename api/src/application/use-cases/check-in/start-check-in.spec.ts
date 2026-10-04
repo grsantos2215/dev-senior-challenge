@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { CheckIn } from '@/application/entities/checkin'
 import { CheckInNotFound } from './errors/check-in-not-found'
 import { CheckInRepository } from '@/application/repositories/checkin-repository'
+import { FakeAuditoria } from '@/helpers/fake-auditoria'
 import { StartCheckIn } from './start-check-in'
 
 class FakeCheckInRepository implements CheckInRepository {
@@ -79,12 +80,14 @@ function checkInAgendado(): CheckIn {
 describe('StartCheckIn', () => {
     let repo: FakeCheckInRepository
     let eventos: FakeEventos
+    let auditoria: FakeAuditoria
     let sut: StartCheckIn
 
     beforeEach(() => {
         repo = new FakeCheckInRepository()
         eventos = new FakeEventos()
-        sut = new StartCheckIn(repo, eventos)
+        auditoria = new FakeAuditoria()
+        sut = new StartCheckIn(repo, eventos, auditoria)
     })
 
     it('promove AGUARDANDO para EM_ATENDIMENTO', async () => {
@@ -187,5 +190,43 @@ describe('StartCheckIn', () => {
         )
 
         expect(eventos.iniciados).toHaveLength(0)
+        expect(auditoria.registros).toHaveLength(0)
+    })
+
+    it('audita a mudança de status com de e para', async () => {
+        const existente = checkInAgendado()
+        repo.agendar(existente)
+
+        await sut.execute({ checkinId: existente.id })
+
+        expect(auditoria.registros).toHaveLength(1)
+        expect(auditoria.registros[0].acao).toBe('CHECKIN_STATUS_ALTERADO')
+        expect(auditoria.registros[0].checkinId).toBe(existente.id)
+        expect(auditoria.registros[0].pacienteId).toBe('paciente-1')
+        expect(auditoria.contextos()[0]).toEqual({
+            de: 'AGUARDANDO',
+            para: 'EM_ATENDIMENTO',
+            transicao: 'iniciar',
+        })
+    })
+
+    it('não audita a repetição idempotente', async () => {
+        const existente = checkInAgendado()
+        repo.agendar(existente)
+
+        await sut.execute({ checkinId: existente.id })
+        await sut.execute({ checkinId: existente.id })
+
+        expect(auditoria.registros).toHaveLength(1)
+    })
+
+    it('não audita quando o check-in já estava em atendimento', async () => {
+        const existente = checkInAgendado()
+        existente.iniciado()
+        repo.agendar(existente)
+
+        await sut.execute({ checkinId: existente.id })
+
+        expect(auditoria.registros).toHaveLength(0)
     })
 })

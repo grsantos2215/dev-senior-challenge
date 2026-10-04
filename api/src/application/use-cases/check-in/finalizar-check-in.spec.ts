@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { CheckIn } from '@/application/entities/checkin'
 import { CheckInNotFound } from './errors/check-in-not-found'
 import { CheckInRepository } from '@/application/repositories/checkin-repository'
+import { FakeAuditoria } from '@/helpers/fake-auditoria'
 import { FinalizarCheckIn } from './finalizar-check-in'
 
 class FakeCheckInRepository implements CheckInRepository {
@@ -82,12 +83,14 @@ function checkInEmAtendimento(): CheckIn {
 describe('FinalizarCheckIn', () => {
     let repo: FakeCheckInRepository
     let eventos: FakeEventos
+    let auditoria: FakeAuditoria
     let sut: FinalizarCheckIn
 
     beforeEach(() => {
         repo = new FakeCheckInRepository()
         eventos = new FakeEventos()
-        sut = new FinalizarCheckIn(repo, eventos)
+        auditoria = new FakeAuditoria()
+        sut = new FinalizarCheckIn(repo, eventos, auditoria)
     })
 
     it('promove EM_ATENDIMENTO para FINALIZADO', async () => {
@@ -161,10 +164,37 @@ describe('FinalizarCheckIn', () => {
         repo.agendar(existente)
         repo.falharNoSave = true
 
-        await expect(
-            sut.execute({ checkinId: existente.id }),
-        ).rejects.toThrow('banco de dados fora')
+        await expect(sut.execute({ checkinId: existente.id })).rejects.toThrow(
+            'banco de dados fora',
+        )
 
         expect(eventos.finalizados).toHaveLength(0)
+        expect(auditoria.registros).toHaveLength(0)
+    })
+
+    it('audita a finalização com de e para', async () => {
+        const existente = checkInEmAtendimento()
+        repo.agendar(existente)
+
+        await sut.execute({ checkinId: existente.id })
+
+        expect(auditoria.registros).toHaveLength(1)
+        expect(auditoria.registros[0].acao).toBe('CHECKIN_STATUS_ALTERADO')
+        expect(auditoria.registros[0].checkinId).toBe(existente.id)
+        expect(auditoria.contextos()[0]).toEqual({
+            de: 'EM_ATENDIMENTO',
+            para: 'FINALIZADO',
+            transicao: 'finalizar',
+        })
+    })
+
+    it('não audita a repetição idempotente', async () => {
+        const existente = checkInEmAtendimento()
+        repo.agendar(existente)
+
+        await sut.execute({ checkinId: existente.id })
+        await sut.execute({ checkinId: existente.id })
+
+        expect(auditoria.registros).toHaveLength(1)
     })
 })

@@ -22,11 +22,16 @@ export class CheckInController {
     @HttpCode(HttpStatus.OK)
     async criar(@Body() dto: CreateCheckInDto) {
         try {
-            const { checkIn, pacienteId, nome, enriquecimentoPendente, eventoId } =
-                await this.createCheckIn.execute({
-                    cpf: dto.cpf,
-                    dataReferencia: hojeComoDataReferencia(),
-                })
+            const {
+                checkIn,
+                pacienteId,
+                nome,
+                enriquecimentoPendente,
+                eventoId,
+            } = await this.createCheckIn.execute({
+                cpf: dto.cpf,
+                dataReferencia: hojeComoDataReferencia(),
+            })
 
             return {
                 ...checkIn.toJSON(),

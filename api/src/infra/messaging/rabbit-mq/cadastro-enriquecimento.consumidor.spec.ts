@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { CadastroPort, PacienteCadastrado } from '@/application/services/cadastro-de-paciente/cadastro.port'
+import {
+    CadastroPort,
+    PacienteCadastrado,
+} from '@/application/services/cadastro-de-paciente/cadastro.port'
 import { EnriquecimentoDeCadastroPort } from '@/application/services/cadastro-de-paciente/enriquecimento-cadastro.port'
 import {
     CadastroIndisponivel,
@@ -9,6 +12,7 @@ import {
 } from '@/application/services/cadastro-de-paciente/errors'
 import { PacienteRepository } from '@/application/repositories/paciente-repository'
 import { Paciente } from '@/application/entities/paciente'
+import { FakeAuditoria } from '@/helpers/fake-auditoria'
 import { ConfigService } from '@nestjs/config'
 
 import { CadastroEnriquecimentoConsumidor } from './cadastro-enriquecimento.consumidor'
@@ -71,11 +75,13 @@ function configuracao(): ConfigService {
 describe('CadastroEnriquecimentoConsumidor', () => {
     let repo: FakePacienteRepository
     let enriquecimento: FakeEnriquecimento
+    let auditoria: FakeAuditoria
     let pacienteDegradado: () => Paciente
 
     beforeEach(() => {
         repo = new FakePacienteRepository()
         enriquecimento = new FakeEnriquecimento()
+        auditoria = new FakeAuditoria()
         pacienteDegradado = () => new Paciente({ cpf: CPF, nome: null })
     })
 
@@ -84,6 +90,7 @@ describe('CadastroEnriquecimentoConsumidor', () => {
             repo,
             cadastro,
             enriquecimento,
+            auditoria,
             configuracao(),
         )
     }
@@ -96,9 +103,10 @@ describe('CadastroEnriquecimentoConsumidor', () => {
                 dataNascimento: new Date('1988-03-12'),
             })
 
-            const resultado = await sut(cadastro).handle(
-                { pacienteId: PACIENTE_ID, tentativa: 1 },
-            )
+            const resultado = await sut(cadastro).handle({
+                pacienteId: PACIENTE_ID,
+                tentativa: 1,
+            })
 
             expect(resultado).toEqual({ status: 'enriquecido' })
             expect(repo.salvos).toHaveLength(1)
@@ -113,18 +121,20 @@ describe('CadastroEnriquecimentoConsumidor', () => {
                 repo.paciente = paciente
                 const cadastro = new FakeCadastro(resposta)
 
-                await sut(cadastro).handle(
-                    { pacienteId: PACIENTE_ID, tentativa: 1 },
-                )
+                await sut(cadastro).handle({
+                    pacienteId: PACIENTE_ID,
+                    tentativa: 1,
+                })
             },
         )
 
         it('não chama o cadastro quando o paciente já estava confirmado', async () => {
             repo.paciente = new Paciente({ cpf: CPF, nome: 'Ana Souza' })
 
-            const resultado = await sut(new FakeCadastro(null)).handle(
-                { pacienteId: PACIENTE_ID, tentativa: 1 },
-            )
+            const resultado = await sut(new FakeCadastro(null)).handle({
+                pacienteId: PACIENTE_ID,
+                tentativa: 1,
+            })
 
             expect(resultado).toEqual({
                 status: 'descartado',
@@ -138,29 +148,34 @@ describe('CadastroEnriquecimentoConsumidor', () => {
             ['rate limit', new CadastroRateLimitado(429)],
             ['indisponivel', new CadastroIndisponivel('500')],
             ['nao encontrado', new PacienteNaoEncontrado(CPF)],
-        ])('reenfileira com a tentativa seguinte em %s', async (_nome, erro) => {
-            repo.paciente = pacienteDegradado()
-            const cadastro = new FakeCadastro(null)
-            cadastro.erro = erro
+        ])(
+            'reenfileira com a tentativa seguinte em %s',
+            async (_nome, erro) => {
+                repo.paciente = pacienteDegradado()
+                const cadastro = new FakeCadastro(null)
+                cadastro.erro = erro
 
-            const resultado = await sut(cadastro).handle(
-                { pacienteId: PACIENTE_ID, tentativa: 1 },
-            )
+                const resultado = await sut(cadastro).handle({
+                    pacienteId: PACIENTE_ID,
+                    tentativa: 1,
+                })
 
-            expect(resultado).toEqual({ status: 'adiado', tentativa: 2 })
-            expect(enriquecimento.pedidos).toEqual([
-                { pacienteId: PACIENTE_ID, tentativa: 2 },
-            ])
-        })
+                expect(resultado).toEqual({ status: 'adiado', tentativa: 2 })
+                expect(enriquecimento.pedidos).toEqual([
+                    { pacienteId: PACIENTE_ID, tentativa: 2 },
+                ])
+            },
+        )
 
         it('desiste sem reenfileirar quando as tentativas acabaram', async () => {
             repo.paciente = pacienteDegradado()
             const cadastro = new FakeCadastro(null)
             cadastro.erro = new CadastroIndisponivel('500')
 
-            const resultado = await sut(cadastro).handle(
-                { pacienteId: PACIENTE_ID, tentativa: MAX_TENTATIVAS },
-            )
+            const resultado = await sut(cadastro).handle({
+                pacienteId: PACIENTE_ID,
+                tentativa: MAX_TENTATIVAS,
+            })
 
             expect(resultado).toEqual({
                 status: 'desistido',
@@ -176,9 +191,10 @@ describe('CadastroEnriquecimentoConsumidor', () => {
             const cadastro = new FakeCadastro(null)
             cadastro.erro = new TypeError('adapter explodiu')
 
-            const resultado = await sut(cadastro).handle(
-                { pacienteId: PACIENTE_ID, tentativa: 1 },
-            )
+            const resultado = await sut(cadastro).handle({
+                pacienteId: PACIENTE_ID,
+                tentativa: 1,
+            })
 
             expect(resultado).toEqual({
                 status: 'falha',
@@ -194,10 +210,80 @@ describe('CadastroEnriquecimentoConsumidor', () => {
             enriquecimento.falha = true
 
             await expect(
-                sut(cadastro).handle(
-                    { pacienteId: PACIENTE_ID, tentativa: 1 },
-                ),
+                sut(cadastro).handle({ pacienteId: PACIENTE_ID, tentativa: 1 }),
             ).rejects.toThrow('broker fora')
+        })
+    })
+
+    describe('auditoria', () => {
+        it('registra CADASTRO_CONSULTADO ao enriquecer', async () => {
+            repo.paciente = pacienteDegradado()
+            const cadastro = new FakeCadastro({
+                nome: 'Ana Souza',
+                dataNascimento: new Date(Date.UTC(1990, 0, 1)),
+            })
+
+            await sut(cadastro).handle({
+                pacienteId: PACIENTE_ID,
+                tentativa: 1,
+            })
+
+            expect(auditoria.registros).toHaveLength(1)
+            expect(auditoria.registros[0].acao).toBe('CADASTRO_CONSULTADO')
+            expect(auditoria.registros[0].pacienteId).toBe(PACIENTE_ID)
+            expect(auditoria.contextos()[0]).toEqual({ tentativa: 1 })
+        })
+
+        it('registra INTEGRACAO_FALHOU quando reenvia', async () => {
+            repo.paciente = pacienteDegradado()
+            const cadastro = new FakeCadastro(null)
+            cadastro.erro = new CadastroRateLimitado(429)
+
+            await sut(cadastro).handle({
+                pacienteId: PACIENTE_ID,
+                tentativa: 1,
+            })
+
+            expect(auditoria.acoes()).toEqual(['INTEGRACAO_FALHOU'])
+            expect(auditoria.contextos()[0]).toMatchObject({
+                integracao: 'cadastro',
+                erro: 'CadastroRateLimitado',
+                tentativa: 1,
+            })
+        })
+
+        it('marca a desistencia quando estoura as tentativas', async () => {
+            repo.paciente = pacienteDegradado()
+            const cadastro = new FakeCadastro(null)
+            cadastro.erro = new CadastroIndisponivel(503)
+
+            await sut(cadastro).handle({
+                pacienteId: PACIENTE_ID,
+                tentativa: MAX_TENTATIVAS,
+            })
+
+            expect(auditoria.contextos()[0]).toMatchObject({
+                desistencia: true,
+                tentativa: MAX_TENTATIVAS,
+            })
+        })
+
+        it('nunca escreve cpf ou nome no contexto', async () => {
+            repo.paciente = pacienteDegradado()
+            const cadastro = new FakeCadastro({
+                nome: 'Ana Souza',
+                dataNascimento: new Date(Date.UTC(1990, 0, 1)),
+            })
+
+            await sut(cadastro).handle({
+                pacienteId: PACIENTE_ID,
+                tentativa: 1,
+            })
+
+            const serializado = JSON.stringify(auditoria.contextos())
+
+            expect(serializado).not.toContain(CPF)
+            expect(serializado).not.toContain('Ana Souza')
         })
     })
 })

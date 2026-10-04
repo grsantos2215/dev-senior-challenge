@@ -111,9 +111,7 @@ describe('PrismaCheckInRepository (banco real)', () => {
                 }),
             )
 
-            const lido = await repo.findById(
-                await thisId(pacienteId, 0),
-            )
+            const lido = await repo.findById(await thisId(pacienteId, 0))
 
             expect(lido?.horario).toBe('09:30')
         })
@@ -394,7 +392,9 @@ describe('PrismaCheckInRepository (banco real)', () => {
             primeiro.finalizado()
             await repo.save(primeiro)
 
-            await expect(repo.create(novoCheckIn(pacienteId))).resolves.toBeUndefined()
+            await expect(
+                repo.create(novoCheckIn(pacienteId)),
+            ).resolves.toBeUndefined()
             expect(await repo.countManyByPacienteId(pacienteId)).toBe(2)
         })
 

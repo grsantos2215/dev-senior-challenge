@@ -1,5 +1,5 @@
 import { Paciente } from '@/application/entities/paciente'
-import { Paciente as RawPaciente } from '@/generated/prisma/client' 
+import { Paciente as RawPaciente } from '@/generated/prisma/client'
 
 export class PrismaPacienteMapper {
     static toPrisma(paciente: Paciente): RawPaciente {

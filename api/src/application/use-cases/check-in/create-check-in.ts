@@ -1,8 +1,10 @@
+import { AuditoriaPort } from '@/application/services/auditoria/auditoria.port'
 import { CheckIn } from '@/application/entities/checkin'
 import { CheckInRepository } from '@/application/repositories/checkin-repository'
 import { EventosDeCheckInPort } from '@/application/services/check-in/eventos-de-check-in.port'
 import { GetOrCreatePaciente } from '@/application/use-cases/paciente/get-or-create-paciente'
 import { Injectable } from '@nestjs/common'
+import { RegistroAuditoria } from '@/application/entities/registro-auditoria'
 
 interface CreateCheckInRequest {
     cpf: string
@@ -23,6 +25,7 @@ export class CreateCheckIn {
         private checkInRepository: CheckInRepository,
         private getOrCreatePaciente: GetOrCreatePaciente,
         private eventos: EventosDeCheckInPort,
+        private auditoria: AuditoriaPort,
     ) {}
 
     async execute(
@@ -41,6 +44,19 @@ export class CreateCheckIn {
         })
 
         await this.checkInRepository.create(checkIn)
+
+        await this.auditoria.registrar(
+            new RegistroAuditoria(
+                'CHECKIN_CRIADO',
+                {
+                    status: checkIn.status,
+                    statusAgendamento: checkIn.statusAgendamento,
+                    enriquecimentoPendente,
+                },
+                checkIn.id,
+                checkIn.pacienteId,
+            ),
+        )
 
         const eventoId = this.eventos.publicarCheckinCriado({
             checkinId: checkIn.id,

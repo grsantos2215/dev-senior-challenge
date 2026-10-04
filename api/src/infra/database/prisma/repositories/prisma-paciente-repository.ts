@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { Paciente } from '@/application/entities/paciente'
-import { PacienteRepository } from '@/application/repositories/paciente-repository' 
+import { PacienteRepository } from '@/application/repositories/paciente-repository'
 import { PrismaPacienteMapper } from '@/infra/database/prisma/mappers/prisma-paciente-mapper'
 import { PrismaService } from '@/infra/database/prisma/prisma.service'
 

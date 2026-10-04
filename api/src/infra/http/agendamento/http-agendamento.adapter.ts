@@ -8,7 +8,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common'
 import { HTTP_TIMEOUT_MS } from '@/infra/tokens/http-timeout'
 import { RequestAgendamentos200Dto } from '@/infra/http/dtos/request-agendamentos'
 import axios from 'axios'
-import { convertXmlToJson } from '@/lib/xml-converter' 
+import { convertXmlToJson } from '@/lib/xml-converter'
 
 /**
  * Adapter do legado XML de agendamento (porta 4100).

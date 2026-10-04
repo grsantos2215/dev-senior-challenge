@@ -46,8 +46,13 @@ describe('POST /check-ins (e2e)', () => {
             .send({ cpf })
             .expect(200)
 
-        const { id, status, statusAgendamento, pacienteId, enriquecimentoPendente } =
-            resposta.body
+        const {
+            id,
+            status,
+            statusAgendamento,
+            pacienteId,
+            enriquecimentoPendente,
+        } = resposta.body
 
         expect(status).toBe('AGUARDANDO')
         expect(statusAgendamento).toBe('INDISPONIVEL')

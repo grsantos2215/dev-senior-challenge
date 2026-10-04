@@ -13,6 +13,7 @@ import { PacienteRepository } from '@/application/repositories/paciente-reposito
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { CreateCheckIn } from './create-check-in'
+import { FakeAuditoria } from '@/helpers/fake-auditoria'
 
 const CPF = '11111111111'
 const DIA = new Date(Date.UTC(2026, 9, 4))
@@ -99,6 +100,7 @@ describe('CreateCheckIn', () => {
     let pacientes: FakePacienteRepository
     let eventos: FakeEventos
     let enriquecimento: FakeEnriquecimento
+    let auditoria: FakeAuditoria
     let sut: CreateCheckIn
 
     beforeEach(() => {
@@ -106,10 +108,12 @@ describe('CreateCheckIn', () => {
         pacientes = new FakePacienteRepository()
         eventos = new FakeEventos()
         enriquecimento = new FakeEnriquecimento()
+        auditoria = new FakeAuditoria()
         sut = new CreateCheckIn(
             checkins,
             new GetOrCreatePaciente(pacientes, enriquecimento),
             eventos,
+            auditoria,
         )
     })
 
@@ -143,6 +147,7 @@ describe('CreateCheckIn', () => {
             checkins,
             new GetOrCreatePaciente(pacientes, enriquecimento),
             eventos,
+            auditoria,
         )
 
         const { enriquecimentoPendente, nome } = await sut.execute({
@@ -179,6 +184,25 @@ describe('CreateCheckIn', () => {
             sut.execute({ cpf: CPF, dataReferencia: DIA }),
         ).rejects.toThrow('db fora')
         expect(eventos.publicados).toHaveLength(0)
+        expect(auditoria.registros).toHaveLength(0)
+    })
+
+    it('audita a criação sem levar cpf nem nome', async () => {
+        const { checkIn } = await sut.execute({
+            cpf: CPF,
+            dataReferencia: DIA,
+        })
+
+        expect(auditoria.registros).toHaveLength(1)
+        expect(auditoria.registros[0].acao).toBe('CHECKIN_CRIADO')
+        expect(auditoria.registros[0].checkinId).toBe(checkIn.id)
+        expect(auditoria.registros[0].pacienteId).toBe(checkIn.pacienteId)
+        expect(auditoria.contextos()[0]).toEqual({
+            status: 'AGUARDANDO',
+            statusAgendamento: 'INDISPONIVEL',
+            enriquecimentoPendente: true,
+        })
+        expect(JSON.stringify(auditoria.contextos())).not.toContain(CPF)
     })
 
     it('deixa o CheckInJaAberto subir do repositório', async () => {

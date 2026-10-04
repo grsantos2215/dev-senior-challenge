@@ -100,9 +100,8 @@ model OutboxEvent {
 }
 
 model Log {
-  id       String  @id @default(uuid()) @db.Uuid
-  acao     AcaoLog
-  mensagem String
+  id   String  @id @default(uuid()) @db.Uuid
+  acao AcaoLog
 
   // Contexto estruturado. Regra: nada de CPF, nome ou nascimento.
   contexto Json?   @map("contexto")

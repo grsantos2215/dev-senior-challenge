@@ -29,7 +29,7 @@ async function server() {
             wildcards: true,
             queue: CADASTRO_ENRIQUECIMENTO_QUEUE,
             queueOptions: opcoesFilaEnriquecimento(),
-routingKey: CADASTRO_ENRIQUECIMENTO_ROUTING_KEY,
+            routingKey: CADASTRO_ENRIQUECIMENTO_ROUTING_KEY,
             noAck: true,
             prefetchCount: 1,
         },

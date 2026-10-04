@@ -13,7 +13,9 @@ export class PacienteNaoEncontrado extends Error {
 
 export class CadastroRateLimitado extends Error {
     constructor(readonly retryAfterSegundos: number) {
-        super(`Cadastro rate limitado. Tentar de novo em ${retryAfterSegundos}s.`)
+        super(
+            `Cadastro rate limitado. Tentar de novo em ${retryAfterSegundos}s.`,
+        )
     }
 }
 

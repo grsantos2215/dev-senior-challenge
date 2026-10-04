@@ -1,5 +1,10 @@
 import { ConfigService } from '@nestjs/config'
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
+import {
+    Injectable,
+    Logger,
+    OnModuleDestroy,
+    OnModuleInit,
+} from '@nestjs/common'
 import { connect, type ChannelModel, type ConfirmChannel } from 'amqplib'
 
 import { CHECKIN_EXCHANGE } from './rabbit-mq/fila'

@@ -1,0 +1,14 @@
+-- O log perde a coluna `mensagem` em texto livre.
+--
+-- O ADR 2 decidiu que o `acao` enum substitui a mensagem: um texto livre é
+-- exatamente o lugar onde CPF, nome e data de nascimento entram sem querer, e um
+-- log append-only nao tem como remover o que ja foi escrito. A coluna ficou no
+-- schema porque o primeiro esboco mantinha as duas coisas, e nada escrevia na
+-- tabela ainda -- a tabela estava vazia, entao nada se perde aqui.
+--
+-- O que substitui a mensagem e o `contexto` jsonb, que e estruturado e
+-- validado: `RegistroAuditoria` recusa a gravacao se o contexto trouxer uma
+-- chave de dado pessoal (cpf, nome, nascimento, email, telefone, endereco),
+-- em qualquer nivel de aninhamento. Recusar e melhor do que registrar e apagar
+-- depois, porque nao existe "depois" numa tabela append-only.
+ALTER TABLE "logs" DROP COLUMN "mensagem";

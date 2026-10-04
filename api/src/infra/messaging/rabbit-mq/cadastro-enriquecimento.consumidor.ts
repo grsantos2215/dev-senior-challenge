@@ -10,12 +10,14 @@ import {
 import { Logger } from '@nestjs/common'
 
 import { CadastroPort } from '@/application/services/cadastro-de-paciente/cadastro.port'
+import { AuditoriaPort } from '@/application/services/auditoria/auditoria.port'
 import { ConfigService } from '@nestjs/config'
 import { Controller } from '@nestjs/common'
 import { EnriquecimentoDeCadastroPort } from '@/application/services/cadastro-de-paciente/enriquecimento-cadastro.port'
 import { EventPattern } from '@nestjs/microservices'
 import type { MensagemEnriquecimento } from '@/infra/messaging/rabbit-mq/cadastro-enriquecimento.publisher'
 import { PacienteRepository } from '@/application/repositories/paciente-repository'
+import { RegistroAuditoria } from '@/application/entities/registro-auditoria'
 
 const INTERVALO_PADRAO_MS = 2_200
 
@@ -39,6 +41,7 @@ export class CadastroEnriquecimentoConsumidor {
         private readonly pacientes: PacienteRepository,
         private readonly cadastro: CadastroPort,
         private readonly publisher: EnriquecimentoDeCadastroPort,
+        private readonly auditoria: AuditoriaPort,
         config: ConfigService,
     ) {
         this.intervaloMinimoMs =
@@ -81,6 +84,15 @@ export class CadastroEnriquecimentoConsumidor {
             paciente.dataNascimento = cadastrado.dataNascimento
             await this.pacientes.save(paciente)
 
+            await this.auditoria.registrar(
+                new RegistroAuditoria(
+                    'CADASTRO_CONSULTADO',
+                    { tentativa },
+                    null,
+                    pacienteId,
+                ),
+            )
+
             this.logger.log(
                 `cadastro enriquecido pacienteId=${pacienteId} tentativa=${tentativa}`,
             )
@@ -105,6 +117,19 @@ export class CadastroEnriquecimentoConsumidor {
                 `falha inesperada enriquecendo pacienteId=${pacienteId}`,
                 erro instanceof Error ? erro.stack : undefined,
             )
+            await this.auditoria.registrar(
+                new RegistroAuditoria(
+                    'INTEGRACAO_FALHOU',
+                    {
+                        integracao: 'cadastro',
+                        erro: (erro as Error).constructor.name,
+                        tentativa,
+                        inesperada: true,
+                    },
+                    null,
+                    pacienteId,
+                ),
+            )
             return { status: 'falha', motivo: (erro as Error).message }
         }
 
@@ -112,11 +137,36 @@ export class CadastroEnriquecimentoConsumidor {
             this.logger.warn(
                 `desisto de enriquecer pacienteId=${pacienteId} apos ${tentativa} tentativas: ${(erro as Error).message}`,
             )
+            await this.auditoria.registrar(
+                new RegistroAuditoria(
+                    'INTEGRACAO_FALHOU',
+                    {
+                        integracao: 'cadastro',
+                        erro: (erro as Error).constructor.name,
+                        tentativa,
+                        desistencia: true,
+                    },
+                    null,
+                    pacienteId,
+                ),
+            )
             return { status: 'desistido', tentativas: tentativa }
         }
 
         this.logger.warn(
             `reenfileiro pacienteId=${pacienteId} tentativa=${tentativa + 1}: ${(erro as Error).message}`,
+        )
+        await this.auditoria.registrar(
+            new RegistroAuditoria(
+                'INTEGRACAO_FALHOU',
+                {
+                    integracao: 'cadastro',
+                    erro: (erro as Error).constructor.name,
+                    tentativa,
+                },
+                null,
+                pacienteId,
+            ),
         )
         await this.publisher.enfileirar(pacienteId, tentativa + 1)
         return { status: 'adiado', tentativa: tentativa + 1 }
