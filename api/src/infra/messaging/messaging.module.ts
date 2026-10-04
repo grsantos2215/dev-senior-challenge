@@ -2,11 +2,12 @@ import {
     CheckinEventsPublisher,
     RMQ_CLIENT,
     createRmqClient,
-} from './rabbit-mq/checkin-events.publisher.js'
+} from './rabbit-mq/checkin-events.publisher'
 
 import { ConfigService } from '@nestjs/config'
 import { Module } from '@nestjs/common'
-import { TopologiaEnriquecimento } from './rabbit-mq/topologia-enriquecimento.js'
+import { RabbitPublisher } from './rabbit-publisher'
+import { TopologiaEnriquecimento } from './rabbit-mq/topologia-enriquecimento'
 
 @Module({
     providers: [
@@ -15,10 +16,10 @@ import { TopologiaEnriquecimento } from './rabbit-mq/topologia-enriquecimento.js
             useFactory: (config: ConfigService) => createRmqClient(config),
             inject: [ConfigService],
         },
+        RabbitPublisher,
         CheckinEventsPublisher,
-        // Declara filas e bindings no `onApplicationBootstrap`.
         TopologiaEnriquecimento,
     ],
-    exports: [CheckinEventsPublisher, RMQ_CLIENT],
+    exports: [CheckinEventsPublisher, RMQ_CLIENT, RabbitPublisher],
 })
 export class MessagingModule {}

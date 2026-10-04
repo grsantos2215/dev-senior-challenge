@@ -3,13 +3,13 @@ import {
     CADASTRO_ENRIQUECIMENTO_ROUTING_KEY,
     CHECKIN_EXCHANGE,
     opcoesFilaEnriquecimento,
-} from './infra/messaging/rabbit-mq/fila.js'
+} from './infra/messaging/rabbit-mq/fila'
 import {
     FastifyAdapter,
     NestFastifyApplication,
 } from '@nestjs/platform-fastify'
 
-import { AppModule } from './app.module.js'
+import { AppModule } from './app.module'
 import { NestFactory } from '@nestjs/core'
 import { Transport } from '@nestjs/microservices'
 import { ValidationPipe } from '@nestjs/common'
@@ -29,8 +29,8 @@ async function server() {
             wildcards: true,
             queue: CADASTRO_ENRIQUECIMENTO_QUEUE,
             queueOptions: opcoesFilaEnriquecimento(),
-            routingKey: CADASTRO_ENRIQUECIMENTO_ROUTING_KEY,
-            noAck: false,
+routingKey: CADASTRO_ENRIQUECIMENTO_ROUTING_KEY,
+            noAck: true,
             prefetchCount: 1,
         },
     })

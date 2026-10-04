@@ -1,10 +1,11 @@
 import { Module } from "@nestjs/common";
 
-import { AppController } from "./app.controller.js";
-import { AppService } from "./app.service.js";
+import { AppController } from "./app.controller";
+import { AppService } from "./app.service";
 import { ConfigModule } from "@nestjs/config";
-import { CadastroModule } from "./infra/cadastro/cadastro.module.js";
-import { MessagingModule } from "./infra/messaging/messaging.module.js";
+import { CadastroModule } from "./infra/cadastro/cadastro.module";
+import { CheckInModule } from "./infra/check-in/check-in.module";
+import { MessagingModule } from "./infra/messaging/messaging.module";
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { MessagingModule } from "./infra/messaging/messaging.module.js";
     }),
     MessagingModule,
     CadastroModule,
+    CheckInModule,
   ],
   controllers: [AppController],
   providers: [AppService],
