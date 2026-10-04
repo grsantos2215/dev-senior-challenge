@@ -1,11 +1,9 @@
 import { CadastroEnriquecimentoConsumidor } from '../messaging/rabbit-mq/cadastro-enriquecimento.consumidor'
 import { CadastroEnriquecimentoPublisher } from '../messaging/rabbit-mq/cadastro-enriquecimento.publisher'
-import { CadastroPort } from '@/application/services/cadastro-de-paciente/cadastro.port'
-import { ConfigModule } from '@nestjs/config'
 import { DatabaseModule } from '../database/database.module'
 import { EnriquecimentoDeCadastroPort } from '@/application/services/cadastro-de-paciente/enriquecimento-cadastro.port'
+import { ExternConnectionsModule } from '../http/extern-connections.module'
 import { GetOrCreatePaciente } from '@/application/use-cases/paciente/get-or-create-paciente'
-import { HttpCadastroAdapter } from '../http/cadastro/http-cadastro.adapter'
 import { MessagingModule } from '../messaging/messaging.module'
 import { Module } from '@nestjs/common'
 import { PacienteRepository } from '@/application/repositories/paciente-repository'
@@ -17,11 +15,10 @@ import { PrismaPacienteRepository } from '../database/prisma/repositories/prisma
  * respeita o nome da classe em runtime.
  */
 const PACIENTE_REPOSITORY = Symbol('PACIENTE_REPOSITORY')
-const CADASTRO_PORT = Symbol('CADASTRO_PORT')
 const ENRIQUECIMENTO_CADASTRO_PORT = Symbol('ENRIQUECIMENTO_CADASTRO_PORT')
 
 @Module({
-    imports: [DatabaseModule, MessagingModule, ConfigModule],
+    imports: [DatabaseModule, MessagingModule, ExternConnectionsModule],
     providers: [
         GetOrCreatePaciente,
 
@@ -32,15 +29,6 @@ const ENRIQUECIMENTO_CADASTRO_PORT = Symbol('ENRIQUECIMENTO_CADASTRO_PORT')
         {
             provide: PacienteRepository,
             useExisting: PACIENTE_REPOSITORY,
-        },
-
-        {
-            provide: CADASTRO_PORT,
-            useClass: HttpCadastroAdapter,
-        },
-        {
-            provide: CadastroPort,
-            useExisting: CADASTRO_PORT,
         },
 
         {
@@ -57,7 +45,6 @@ const ENRIQUECIMENTO_CADASTRO_PORT = Symbol('ENRIQUECIMENTO_CADASTRO_PORT')
     exports: [
         GetOrCreatePaciente,
         PacienteRepository,
-        CadastroPort,
         EnriquecimentoDeCadastroPort,
     ],
 })

@@ -198,11 +198,17 @@ desenho/documentação. Por quê._
     - O custo é que receitas que assumem Express deixam de funcionar. Redirect
       exige `res.status(302).redirect(url)`, e middleware recebe `req.raw` e
       `res.raw`, porque o Nest usa `@fastify/middie` por baixo.
-    - Na v12 o mapeamento de erro foi reescrito entre core, Express e Fastify.
-      Filtro de exceção precisa de teste antes de confiar no comportamento em
-      produção.
-    - A volta para o Express é uma linha, então o custo de ter escolhido errado
-      é baixo.
+- Na v12 o mapeamento de erro foi reescrito entre core, Express e Fastify.
+  Filtro de exceção precisa de teste antes de confiar no comportamento em
+  produção. - **`app.listen(port)` sem host quebra a porta publicada do
+  Docker.** O Express, que é o default, faz bind em `0.0.0.0`; o Fastify usa
+  `localhost` como padrão e `app.listen(port)` não passa host. O sintoma é
+  silencioso e só aparece no container: a app responde em `127.0.0.1` dentro
+  dele e recusa conexão no IP da rede, então `curl` no host devolve
+  `http_code=000` com a porta declarada como publicada. Passou despercebido até
+  o compose ser exercitado de fora. Por isso `main.ts` faz
+  `app.listen(port, '0.0.0.0')`. - A volta para o Express é uma linha, então o
+  custo de ter escolhido errado é baixo.
 
 ### ADR 7 - Cancelamento sem horário de início
 
@@ -340,17 +346,50 @@ desenho/documentação. Por quê._
     - `emit` (request/reply) em vez de `publish` (fire-and-forget) no publisher:
       `emit` espera a resposta do consumidor, então fila ausente ou consumidor
       parado aparece como erro em vez de descarte silencioso. O custo é o
-      acoplamento do ADR 8.
+      acoplamento do ADR 8. Descartado também dentro do teste: `emit` sem
+      servidor Nest que responda deixa a promise pendente, e o fechamento do
+      canal sob ela estoura um `Channel ended, no reply will be forthcoming` não
+      tratado, que o vitest conta como unhandled rejection e faz a suíte sair
+      com código de erro apesar de todos os testes passarem.
 - **Consequências:**
     - **O broker exige argumentos idênticos a cada declaração da fila.**
       Divergir no `x-dead-letter-exchange` dá 406 PRECONDITION_FAILED e derruba
       o canal. Por isso `opcoesFilaEnriquecimento()` é compartilhado entre a app
       e a função de topologia: se divergirem, a API não sobe.
-    - **A DLQ não é usada hoje.** Ela só recebe o que o broker dead-letteriza
-      (nack sem requeue), e o consumidor faz `ack` ao desistir na terceira
-      tentativa. O que existe é log em `warn` com o motivo da desistência. A DLQ
-      está como rede para quem passar a fazer `nack`, **não deve ser considerada
-      como observabilidade funcionando.**
+    - **O teste de topologia tem de ser hermético** Rodar `fila.spec.ts` com a
+      API no ar faz o teste passar _e_ subir dados em produção: a fila real está
+      bound na routing key de produção, então o consumer real recebe uma cópia
+      da mensagem de teste, não acha o paciente fictício, descarta e a cada
+      execução a DLQ cresce. Fila exclusiva não impede isso, exclusividade vale
+      para consumo, não para publicação. Daí as três decisões do spec:MQ direto
+      em vez de `ClientRMQ` (o `ChannelWrapper` não tem `waitForConfirms` e o
+      `close()` dele rejeita), exchange e fila próprios do teste, e as asserções
+      de produção (binding, `durable`, `x-dead-letter-*`) feitas pela API de
+      gerenciamento, em vez de por publicação. Um controle negativo foi incluído
+      porque, sem ele, um teste de entrega que é bem sucedido não prova nada: a
+      fila de destino poderia estar errada e o teste seguiria verde.
+    - **Fila e exchange de teste precisam de `exclusive`/`autoDelete` com
+      descarte explícito.** `deleteQueue` sozinho deixa órfã toda vez que o
+      teste quebra no meio, e `autoDelete` em exchange só dispara depois que
+      existiu binding, o controle negativo nunca vincula nada. Sem isso o broker
+      de desenvolvimento acumula lixo a cada execução.
+    - **A DLQ não recebe a desistência, mas recebe o crash do handler.** São
+      dois caminhos distintos, e a distinção importa:
+        - Na terceira tentativa o consumidor só retorna (`return` em
+          `tratarFalha`). O handler resolve, e o Nest faz `ack` automático. A
+          mensagem some sem registro além do log em `warn`, **essa desistência
+          não é recuperável por ninguém.**
+        - Se o handler **lança** fora do `try/catch` do enrichimento, o Nest faz
+          `nack` sem requeue e o broker dead-letteriza. Foi verificado no
+          broker: um payload sem o envelope `{ pattern, data }` deixa a
+          desestruturação em `handle` lançar, e a mensagem chega em
+          `cadastro.enriquecer.dlq` com `x-death.reason = "rejected"`. É a rede
+          contra crash, e ela funciona.
+
+        Ou seja: a topagem da DLQ está correta e exercitada, mas **não** deve
+        ser tratada como observabilidade da desistência. Quem precisa saber de
+        reprocessamento perdido hoje depende do log.
+
     - `prefetchCount: 1` dá backpressure de verdade: uma mensagem em voo por
       instância, e o burst contra o mock fica limitado por construção.
     - `wildcards: true` no `ServerRMQ` faz o Nest usar a routing key da mensagem
