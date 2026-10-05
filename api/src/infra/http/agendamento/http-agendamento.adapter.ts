@@ -52,7 +52,8 @@ export class HttpAgendamentoAdapter extends AgendamentoPort {
 
         if (!dados.possuiAgendamento) return null
 
-        if (!dados.especialidade || !dados.horario || !dados.medico) return null
+        if (!dados.especialidade || !dados.horario || !dados.medico)
+            throw new ErroAgendamentoIndisponivel()
 
         return {
             especialidade: dados.especialidade,

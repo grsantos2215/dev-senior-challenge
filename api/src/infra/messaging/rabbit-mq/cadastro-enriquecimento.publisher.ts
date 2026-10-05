@@ -47,7 +47,7 @@ export class CadastroEnriquecimentoPublisher extends EnriquecimentoDeCadastroPor
             this.logger.warn(
                 `enfileiramento de enriquecimento falhou pacienteId=${pacienteId}: ${
                     erro instanceof Error ? erro.message : String(erro)
-                }. O paciente fica degradado e o proximo check-in reenfileira.`,
+                }. O paciente fica degradado e o próximo check-in reenfileira.`,
             )
         }
     }

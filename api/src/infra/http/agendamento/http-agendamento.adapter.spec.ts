@@ -95,7 +95,7 @@ describe('HttpAgendamentoAdapter', () => {
             expect(await sut.buscarPorCpf(CPF)).toBeNull()
         })
 
-        it('devolve null se disser true mas vier sem os campos', async () => {
+        it('trata agendamento presente sem os campos obrigatorios como indisponível', async () => {
             nock(BASE)
                 .get('/agendamento')
                 .query({ cpf: CPF })
@@ -104,7 +104,9 @@ describe('HttpAgendamentoAdapter', () => {
                     xml('  <possuiAgendamento>true</possuiAgendamento>'),
                 )
 
-            expect(await sut.buscarPorCpf(CPF)).toBeNull()
+            await expect(sut.buscarPorCpf(CPF)).rejects.toBeInstanceOf(
+                ErroAgendamentoIndisponivel,
+            )
         })
     })
 

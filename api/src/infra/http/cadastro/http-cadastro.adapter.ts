@@ -49,15 +49,15 @@ export class HttpCadastroAdapter extends CadastroPort {
                 dataNascimento: new Date(`${data.dataNascimento}T00:00:00Z`),
             }
         } catch (erro) {
-            throw this.classificar(erro, cpf)
+            throw this.classificar(erro)
         }
     }
 
-    private classificar(erro: unknown, cpf: string): Error {
+    private classificar(erro: unknown): Error {
         if (axios.isAxiosError(erro)) {
             const status = erro.response?.status
 
-            if (status === 404) return new PacienteNaoEncontrado(cpf)
+            if (status === 404) return new PacienteNaoEncontrado()
 
             if (status === 429) {
                 const retryAfter = Number(erro.response?.headers['retry-after'])
@@ -67,11 +67,11 @@ export class HttpCadastroAdapter extends CadastroPort {
             }
 
             this.logger.warn(
-                `cadastro respondeu ${status ?? 'sem resposta'} para cpf=${cpf}`,
+                `cadastro respondeu ${status ?? 'sem resposta'}`,
             )
         } else {
             this.logger.warn(
-                `cadastro falhou sem resposta HTTP para cpf=${cpf}`,
+                `cadastro falhou sem resposta HTTP`,
             )
         }
 

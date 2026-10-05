@@ -147,7 +147,7 @@ describe('CadastroEnriquecimentoConsumidor', () => {
         it.each([
             ['rate limit', new CadastroRateLimitado(429)],
             ['indisponivel', new CadastroIndisponivel('500')],
-            ['nao encontrado', new PacienteNaoEncontrado(CPF)],
+
         ])(
             'reenfileira com a tentativa seguinte em %s',
             async (_nome, erro) => {
@@ -168,6 +168,7 @@ describe('CadastroEnriquecimentoConsumidor', () => {
         )
 
         it('desiste sem reenfileirar quando as tentativas acabaram', async () => {
+
             repo.paciente = pacienteDegradado()
             const cadastro = new FakeCadastro(null)
             cadastro.erro = new CadastroIndisponivel('500')
@@ -180,6 +181,23 @@ describe('CadastroEnriquecimentoConsumidor', () => {
             expect(resultado).toEqual({
                 status: 'desistido',
                 tentativas: MAX_TENTATIVAS,
+            })
+            expect(enriquecimento.pedidos).toHaveLength(0)
+        })
+
+        it('descarta sem reenfileirar quando o cadastro responde 404', async () => {
+            repo.paciente = pacienteDegradado()
+            const cadastro = new FakeCadastro(null)
+            cadastro.erro = new PacienteNaoEncontrado()
+
+            const resultado = await sut(cadastro).handle({
+                pacienteId: PACIENTE_ID,
+                tentativa: 1,
+            })
+
+            expect(resultado).toEqual({
+                status: 'descartado',
+                motivo: 'cpf-desconhecido',
             })
             expect(enriquecimento.pedidos).toHaveLength(0)
         })

@@ -7,14 +7,14 @@ import {
     CadastroRateLimitado,
     PacienteNaoEncontrado,
 } from '@/application/services/cadastro-de-paciente/errors'
-import { Logger } from '@nestjs/common'
 
-import { CadastroPort } from '@/application/services/cadastro-de-paciente/cadastro.port'
 import { AuditoriaPort } from '@/application/services/auditoria/auditoria.port'
+import { CadastroPort } from '@/application/services/cadastro-de-paciente/cadastro.port'
 import { ConfigService } from '@nestjs/config'
 import { Controller } from '@nestjs/common'
 import { EnriquecimentoDeCadastroPort } from '@/application/services/cadastro-de-paciente/enriquecimento-cadastro.port'
 import { EventPattern } from '@nestjs/microservices'
+import { Logger } from '@nestjs/common'
 import type { MensagemEnriquecimento } from '@/infra/messaging/rabbit-mq/cadastro-enriquecimento.publisher'
 import { PacienteRepository } from '@/application/repositories/paciente-repository'
 import { RegistroAuditoria } from '@/application/entities/registro-auditoria'
@@ -75,7 +75,7 @@ export class CadastroEnriquecimentoConsumidor {
 
             if (!cadastrado) {
                 this.logger.warn(
-                    `cadastro nao conhece o cpf=${paciente.cpf}, fica degradado`,
+                    `cadastro não conhece o paciente, fica degradado`,
                 )
                 return { status: 'descartado', motivo: 'cpf-desconhecido' }
             }
@@ -107,10 +107,29 @@ export class CadastroEnriquecimentoConsumidor {
         pacienteId: string,
         tentativa: number,
     ): Promise<ResultadoEnriquecimento> {
+        if (erro instanceof PacienteNaoEncontrado) {
+            this.logger.warn(
+                `cadastro não conhece o pacienteId=${pacienteId}, descarto enriquecimento`,
+            )
+            await this.auditoria.registrar(
+                new RegistroAuditoria(
+                    'INTEGRACAO_FALHOU',
+                    {
+                        integracao: 'cadastro',
+                        erro: erro.constructor.name,
+                        tentativa,
+                        definitivo: true,
+                    },
+                    null,
+                    pacienteId,
+                ),
+            )
+            return { status: 'descartado', motivo: 'cpf-desconhecido' }
+        }
+
         const conhecido =
             erro instanceof CadastroRateLimitado ||
-            erro instanceof CadastroIndisponivel ||
-            erro instanceof PacienteNaoEncontrado
+            erro instanceof CadastroIndisponivel
 
         if (!conhecido) {
             this.logger.error(
@@ -135,7 +154,7 @@ export class CadastroEnriquecimentoConsumidor {
 
         if (tentativa >= MAX_TENTATIVAS) {
             this.logger.warn(
-                `desisto de enriquecer pacienteId=${pacienteId} apos ${tentativa} tentativas: ${(erro as Error).message}`,
+                `desistência de enriquecimento pacienteId=${pacienteId} após ${tentativa} tentativas: ${(erro as Error).message}`,
             )
             await this.auditoria.registrar(
                 new RegistroAuditoria(
