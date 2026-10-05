@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common'
 import { OutboxRepository } from '@/application/repositories/outbox-repository'
 import { Prisma } from '@/generated/prisma/client'
 import { PrismaService } from '../prisma.service'
+import { MAX_TENTATIVAS_OUTBOX } from '@/application/services/outbox/limites-outbox'
 
 @Injectable()
 export class PrismaOutboxRepository implements OutboxRepository {
@@ -23,9 +24,15 @@ export class PrismaOutboxRepository implements OutboxRepository {
         })
     }
 
-    async listarNaoPublicados(limite: number): Promise<EventoOutbox[]> {
+    async listarNaoPublicados(
+        limite: number,
+        maxTentativas: number,
+    ): Promise<EventoOutbox[]> {
         const registros = await this.prisma.outboxEvent.findMany({
-            where: { publicadoEm: null },
+            where: {
+                publicadoEm: null,
+                tentativas: { lt: Math.min(maxTentativas, MAX_TENTATIVAS_OUTBOX) },
+            },
             orderBy: { criadoEm: 'asc' },
             take: limite,
         })

@@ -3,8 +3,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { OutboxRepository } from '@/application/repositories/outbox-repository'
 import { PublicadorDeEventosPort } from '@/application/services/outbox/publicador-de-eventos.port'
 import { RegistroAuditoria } from '@/application/entities/registro-auditoria'
-
-const MAX_TENTATIVAS = 10
+import { MAX_TENTATIVAS_OUTBOX } from '@/application/services/outbox/limites-outbox'
 
 @Injectable()
 export class DespacharOutbox {
@@ -17,7 +16,10 @@ export class DespacharOutbox {
     ) {}
 
     async executar(limite = 20): Promise<void> {
-        const eventos = await this.outbox.listarNaoPublicados(limite)
+        const eventos = await this.outbox.listarNaoPublicados(
+            limite,
+            MAX_TENTATIVAS_OUTBOX,
+        )
 
         for (const evento of eventos) {
             try {
@@ -46,7 +48,7 @@ export class DespacharOutbox {
                     erro instanceof Error ? erro.stack : undefined,
                 )
 
-                if (evento.tentativas >= MAX_TENTATIVAS) {
+                if (evento.tentativas >= MAX_TENTATIVAS_OUTBOX) {
                     await this.auditoria.registrar(
                         new RegistroAuditoria(
                             'OUTBOX_DESISTIDO',

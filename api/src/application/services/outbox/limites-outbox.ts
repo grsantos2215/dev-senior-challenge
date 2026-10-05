@@ -1,0 +1,1 @@
+export const MAX_TENTATIVAS_OUTBOX = 10
