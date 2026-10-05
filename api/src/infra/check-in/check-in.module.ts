@@ -14,6 +14,8 @@ import { ListCheckInsByPaciente } from '@/application/use-cases/check-in/get-pac
 import { MessagingModule } from '../messaging/messaging.module'
 import { Module } from '@nestjs/common'
 import { StartCheckIn } from '@/application/use-cases/check-in/start-check-in'
+import { AgendamentoPort } from '@/application/services/agendamento/agendamento.port'
+import { HttpAgendamentoAdapter } from '../http/agendamento/http-agendamento.adapter'
 
 @Module({
     imports: [DatabaseModule, MessagingModule, CadastroModule],
@@ -28,6 +30,10 @@ import { StartCheckIn } from '@/application/use-cases/check-in/start-check-in'
         CountPacientCheckins,
         ListCheckInsByCpf,
         CountCheckInsByCpf,
+        {
+            provide: AgendamentoPort,
+            useClass: HttpAgendamentoAdapter,
+        },
         {
             provide: EventosDeCheckInPort,
             useExisting: CheckinEventsPublisher,

@@ -1,17 +1,26 @@
-import type { ConfigService } from '@nestjs/config'
-import { randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { CheckIn } from '@/application/entities/checkin'
 import { CheckInJaAberto } from '@/application/use-cases/check-in/errors/check-in-ja-aberto'
-
-import { PrismaService } from '../prisma.service'
+import type { ConfigService } from '@nestjs/config'
 import { PrismaCheckInRepository } from './prisma-checkin-repository'
+import { PrismaService } from '../prisma.service'
+import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 
-const url = /DATABASE_URL="?([^"\r\n]+)"?/.exec(
-    readFileSync('.env', 'utf8'),
-)![1]
+const url =
+    process.env.DATABASE_URL ??
+    (() => {
+        const match = /DATABASE_URL="?([^"\r\n]+)"?/.exec(
+            readFileSync('.env', 'utf8'),
+        )
+
+        if (!match)
+            throw new Error(
+                'DATABASE_URL não encontrada no ambiente nem em .env',
+            )
+        return match[1]
+    })()
 
 const config = {
     getOrThrow: () => url,

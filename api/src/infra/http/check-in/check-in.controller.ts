@@ -174,10 +174,9 @@ export class CheckInController {
         return erro instanceof Error ? erro : new Error(String(erro))
     }
 
-    private pacienteNaoEncontrado(cpf: string): NotFoundException {
+    private pacienteNaoEncontrado(_cpf: string): NotFoundException {
         return new NotFoundException({
             message: 'Nenhum paciente com o cpf informado.',
-            cpf,
         })
     }
 }
