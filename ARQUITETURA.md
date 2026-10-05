@@ -16,8 +16,11 @@ o paciente está no caminho da request.** O que é enriquecimento vai para fila.
    |      +-- GetOrCreatePaciente (INSERT, degradado|
    |      |     se o cadastro falhar)               |
    |      |                                         |
-   |      +---> publica checkin.created  ----------+--> exchange checkin.events
-   |      |                                         |      (topic)
+   |      +-- HttpAgendamentoAdapter (legado XML)    |
+   |      |     -> PRESENTE | AUSENTE | INDISPONIVEL|
+   |      |                                         |
+   |      +-- $transaction: checkin + outbox_events  |
+   |      |                                         |
    |      +---> enfileira { pacienteId, tentativa } |
    |              |                                 |
    |              v                                 |
@@ -27,22 +30,31 @@ o paciente está no caminho da request.** O que é enriquecimento vai para fila.
    |   CadastroEnriquecimentoConsumidor             |
    |      -> mock de cadastro (~600ms, 10% falha)   |
    |      -> enriquece ou reinsere (max 3)          |
+   |      -> 404 = definitivo, descarta sem retry   |
    +------------------------------------------------+
           |
           v
-   Postgres: checkins + pacientes + logs (append-only)
+   Postgres: checkins + pacientes + outbox_events + logs (append-only)
+          |
+          v
+   OutboxDispatcher (poll 5s) -> exchange checkin.events (confirmado)
 ```
 
-Os dois sistemas externos entram **fora** do caminho da request:
+Os dois sistemas externos entram em lugares diferentes, e a distinção é
+deliberada:
 
 - **Cadastro de pacientes** (mock HTTP, ~600ms, 12% de falha, 5 req/10s por IP):
   consultado pelo consumidor da fila, nunca pela request. A request grava o
   paciente em estado degradado (`cadastroConfirmado = false`) e segue.
 - **Legado de agendamento** (XML, ~800ms, falha 10%): consultado dentro da
-  request porque os três estados de `statusAgendamento` é o dado, não
-  enriquecimento.
+  request porque os três estados de `statusAgendamento` são o dado, não
+  enriquecimento. Ver ADR 4.
 
-O ciclo de vida do check-in tem quatro eventos de domínio, publicados no mesmo
+O evento de check-in **não** é publicado direto pela request: a `CreateCheckIn`
+e as transições gravam o evento em `outbox_events` na mesma `$transaction` do
+check-in, e o `OutboxDispatcher` publica depois. Ver ADR 1. O ciclo de vida do
+check-in tem quatro eventos de domínio, publicados no mesmo
+
 exchange `checkin.events`: `checkin.created`, `checkin.iniciado`,
 `checkin.finalizado` e `checkin.cancelado`. Cada transição é um use case, e as
 regras de estado vivem na entidade: `finalizado()` exige `iniciadoEm`, e tanto
@@ -81,9 +93,12 @@ sem check-in, que responde `200` com lista vazia e contagem zero.
 
 - **Circuit breaker e cache do cadastro REST** (ADR 9): o pacing de 2,2s com
   teto de 3 tentativas já resolve o caso prático.
-- **Métricas e health check.** O enunciado não pede, e não quis inventar um
-  formato de telemetria que ninguém vai consumir. O sinal hoje é o log
-  estruturado e a profundidade das filas.
+- **Health check existe, métricas não.** O `GET /health` verifica as
+  dependências que a request depende (Postgres e broker) e responde `503` quando
+  alguma está fora, o que é o minimo para o compose/orquestrador saber quando
+  tirar a instância de rota. **Métricas continuam fora:** o enunciado não pede,
+  e não quis inventar um formato de telemetria que ninguém vai consumir. O sinal
+  hoje é o log estruturado e a profundidade das filas.
 
 **Por que o recorte é esse:** o risco do exercício não é fazer mais, é fazer
 pouco e fazer certo. Cada adição extra é uma camada a mais que precisa de teste
@@ -120,6 +135,26 @@ e de observabilidade.
     - O Prisma não versiona índice parcial → o
       `CREATE INDEX ... WHERE publicado_em IS NULL` foi escrito à mão após a
       migration.
+    - **Um advisory lock transacional serializa os dispatchers.** Cada ciclo
+      tenta adquirir a mesma chave com `pg_try_advisory_xact_lock`; só quem
+      adquire drena o lote. O lock fica aberto durante a publicação e as
+      gravações e é liberado pelo Postgres quando a transação termina. Isso
+      evita dois dispatchers ativos publicarem o mesmo lote sem adicionar
+      colunas de claim. O custo é manter uma conexão/transação aberta enquanto o
+      broker confirma o lote (timeout de 120s).
+    - **Ainda é at-least-once.** O publish no RabbitMQ e a atualização no
+      Postgres não são uma transação distribuída. Se o processo cair depois da
+      confirmação do broker e antes de marcar `publicado_em`, o evento será
+      publicado novamente após reiniciar. O consumidor ainda precisa deduplicar
+      por `eventId`.
+    - O limite de 10 tentativas agora também filtra a consulta pendente. Ao
+      atingir o limite, o evento recebe `OUTBOX_DESISTIDO` e sai dos lotes
+      ativos; a linha continua no banco, sem ser marcada como publicada, para
+      preservar a trilha e permitir investigação manual.
+    - **Reconexão do broker:** o `RabbitPublisher` abre a conexão no
+      `onModuleInit` e reconecta sozinho em `close`/`error`, com backoff fixo de
+      5s. Sem isso, uma queda do broker deixava o dispatcher falhando para
+      sempre até reiniciar o processo.
 
 ### ADR 2 - Log append-only
 
@@ -207,32 +242,46 @@ e de observabilidade.
 ### ADR 4 - Status de agendamento com três estados
 
 - **Contexto:** o sistema legado devolve `possuiAgendamento` booleano, mas falha
-  com `500` em ~10% das chamadas. O README do legado faz a pergunta direto: _"um
-  check-in deveria falhar por completo porque o legado caiu?"_
-- **Decisão:** `statusAgendamento` com `PRESENTE | AUSENTE | INDISPONIVEL`,
-  default `INDISPONIVEL`. O check-in é criado mesmo com o legado fora; os dados
-  ficam nulos e o status registra que não deu para perguntar.
+  com `500` em ~10% das chamadas. O README do legado faz a seguinte pergunta: um
+  check-in deveria falhar por completo porque o legado caiu?
+- **Decisão:** `statusAgendamento` com `PRESENTE | AUSENTE | INDISPONIVEL`. O
+  legado e consultado **dentro da request** do `POST /check-ins`, pelo
+  `HttpAgendamentoAdapter`, com `HTTP_TIMEOUT_MS` (5s). O check-in é criado
+  mesmo com o legado fora; os dados ficam nulos e o status registra que não deu
+  para perguntar.
+- **Como o legado e ligado:** `AgendamentoPort` está registrado no
+  `CheckInModule` apontando para `HttpAgendamentoAdapter`, e injetado no
+  `CreateCheckIn`. O adapter mantém os três estados: `null` = o legado respondeu
+  e não há agendamento, erro = o legado falhou de verdade. O `CreateCheckIn`
+  traduz: `null` -> `AUSENTE`, retorno com especialidade/medico/horario ->
+  `PRESENTE`, exceção -> `INDISPONIVEL`. Os três ramos tem teste unitário.
 - **Alternativas consideradas:**
     - Falhar o check-in quando o legado cai: mais simples, mas a recepção perde
       o paciente por causa de um sistema que só faz enriquecimento, CPF e nome
       já vieram do cadastro.
-    - Booleano `possuiAgendamento`: confunde "não tem agendamento" com "não deu
-      para perguntar". Descartado; é o que o DTO original fazia, vide os commits
+    - Booleano `possuiAgendamento`: confunde não tem agendamento com não deu
+      para perguntar. Descartado; é o que o DTO original fazia, vide os commits
       iniciais.
-    - `boolean` nullable: funciona, mas a distinção entre "não consultou" e
-      "consultou e vazio" é perdida, e é mais fácil de errar em código.
+    - `boolean` nullable: funciona, mas a distinção entre não consultou e
+      consultou e vazio é perdida, e é mais facil de errar em codigo.
     - Retry no legado até responder: converte 10% de falha em latência.
-- **Consequências:**
-    - O default `INDISPONIVEL` força a decisão explícita na aplicação, não dá
-      para criar check-in com `AUSENTE` por acidente.
-    - Dá para medir a saúde da integração contando por status, e daí virar
+    - Consulta assíncrona ao legado (enfileirar e enriquecer depois): isola a
+      request, mas faz o totem esperar o mesmo tempo quando a fila sobe. Fica
+      para a próxima iteração, se o tempo de resposta não aguentar.
+- **Consequencias:**
+    - Sem `INDISPONIVEL` como default silencioso: o `CreateCheckIn` sempre
+      consulta e decide explicitamente, então não dá para criar check-in com
+      `AUSENTE` por acidente.
+    - Dá para medir a saude da integração contando por status, e virar um
       alerta.
-    - CHECK no banco exige `especialidade` e `horario` quando o status é
+    - CHECK no banco exige `especialidade` e `horario` quando o status e
       `PRESENTE`, o que pega bug de mapeamento na raiz em vez de deixar dado
-      sujo passar.
+      passar.
+    - Custo: a request espera até 5s pelo legado. Assumido de propósito - o
+      balcão precisa da resposta do agendamento para o paciente sair com ela.
     - O que é perdido: o paciente entra sem informação de agendamento. Aceito, a
       recepção consulta o legado por fora se precisar. A degradação é graciosa
-      **e explícita**.
+      **e explicita**.
 
 ### ADR 5 - Prisma como ORM
 
@@ -403,13 +452,18 @@ e de observabilidade.
       mais
     - **Cache de resposta do cadastro:** descartado. O dado praticamente não
       muda.
-- **Consequências:**
-    - O pacing é por instância. Duas réplicas dividida por 2,2s cada uma somam
+- **Consequencias:**
+    - O pacing e por instância. Duas replicas dividida por 2,2s cada uma somam
       mais que o pretendido.
     - Erro inesperado no adapter **não** vira retry: vira log e paciente
       degradado
-
-### ADR 10 - Fila durável
+    - **`PacienteNaoEncontrado` é definitivo e não é reenfileirado.** O
+      consumidor trata esse erro num ramo próprio, antes do bloco de retry:
+      audita `INTEGRACAO_FALHOU` com `defetivo: true` e devolve `descartado` com
+      motivo `cpf-desconhecido`. Isso importa por causa do rate limit do mock:
+      cada retry de um 404 gastava uma das 5 requisições por 10s, e dez retries
+      de um paciente que simplesmente não existe não mudam a resposta. Teste
+      unitario cobre: 404 -> descartado, zero reenfileiramentos.
 
 - **Contexto:** no ADR 3 eu documentei o lado do publisher. O lado do consumidor
   tem uma armadilha que só aparece em produção: com `wildcards: true`, o
@@ -573,8 +627,17 @@ de um log mutável, e é o motivo de o log referenciar id em vez de copiar dado.
 Nenhuma chave estrangeira aponta para `logs`, e as duas que apontavam para ele
 saíram: `SET NULL` é um `UPDATE`, e o trigger o bloqueia.
 
+**O que isso custou em correção.** A primeira versão logava o CPF: o
+`HttpCadastroAdapter` imprimia `cpf=${cpf}` no warning de HTTP, e o consumidor
+imprimia o CPF do paciente quando o cadastro não conhecia. Isso contrariava o
+que esta seção afirma, então foi corrigido: os dois logs passaram a dizer so o
+que precisa (`cadastro respondeu 503`, `cadastro não conhece o pacienteId=...`)
+e a mensagem do `PacienteNaoEncontrado` não coloque mais o CPF. Vale registrar
+porque o erro é facil de reintroduzir: um `logger.warn` com a variável do
+request na mão e o caminho mais curto para vazar dado sensível.
+
 **Retenção e eliminação.** O log não guarda informação pessoal, então sobrevive
-à eliminação do paciente sem persistir o dado: o `pacienteId` fica como
+a eliminação do paciente sem persistir o dado: o `pacienteId` fica como
 referência histórica e o paciente pode ser apagado normalmente. É a resposta que
 dei ao direito ao esquecimento dentro do que o ADR 2 permite, e a lacuna
 assumida é que a existência do check-in continua visível depois da eliminação do
@@ -594,13 +657,32 @@ existe ainda.
 5. Remover o CPF dos logs de acesso do HTTP ingress antes que ele vire o
    depósito de dado pessoal que o ADR 2 recusou.
 
+## O front
+
+O frontend React/Vite tem dois fluxos distintos, compostos com os componentes
+COSS UI e conectados com Ky e TanStack Query:
+
+- **Totem (`/`)**: coleta o CPF e chama `POST /check-ins`. Exibe confirmação
+  quando o registro é criado e orienta o paciente a aguardar a recepção. Se já
+  houver check-in aberto (`409`), orienta procurar a equipe.
+- **Recepção (`/recepcao`)**: consulta pelo CPF via `GET /check-ins?cpf=`,
+  mostra status do check-in e do agendamento e permite iniciar, finalizar ou
+  cancelar. A consulta atualiza a cada 15 segundos e também pode ser atualizada
+  manualmente.
+
+**Limites do contrato atual:** a API não oferece fila global nem autenticação.
+Assim, a tela da recepção acompanha o histórico do paciente pesquisado, não a
+fila de toda a unidade; os indicadores também são restritos a esse paciente. O
+nome pode ainda não estar disponível enquanto o enriquecimento assíncrono está
+pendente. Não há testes automatizados de interface neste recorte.
+
 ## Testes
 
 **Estratégia.** Testar contra as peças reais onde a falha seria silenciosa, e
 contra fakes onde a dependência é irrelevante. O critério: se o teste pode
 passar com a integração quebrada, ele não vale.
 
-**173 testes unitários em 15 arquivos**, sem broker nem banco:
+**Testes unitários e de adapter (19 arquivos `*.spec.ts`):**
 
 - Entidades e use cases com repositório e porta de eventos em memória: transição
   de estado, idempotência, `404`, pré-condição de início e ausência de
@@ -619,8 +701,21 @@ passar com a integração quebrada, ele não vale.
 - `fila.spec.ts` verifica a topologia pela API de gerenciamento em vez de por
   publicação, com um controle negativo, porque um teste de entrega que dá certo
   não prova nada se a fila de destino puder estar errada.
+- `http-agendamento.adapter.spec.ts` cobre sucesso XML, walk-in, XML inválido,
+  timeout e falha HTTP. Uma resposta que afirma `possuiAgendamento=true` mas
+  omite especialidade, médico ou horário é tratada como indisponível, não como
+  walk-in.
+- `saude.service.spec.ts` verifica a composição das checagens de dependência; e
+  `errors.spec.ts` protege as mensagens dos erros do cadastro contra vazamento
+  de CPF.
+- `outbox-dispatcher.spec.ts` verifica que só a instância que adquire o advisory
+  lock processa o lote; `prisma-outbox.repository.spec.ts` verifica que eventos
+  no limite de tentativas deixam de entrar nos lotes ativos.
+- Os testes de `fila.spec.ts` e `rabbit-publisher.spec.ts` usam RabbitMQ real;
+  `fila.spec.ts` também consulta a API de gerenciamento. O job de qualidade do
+  CI sobe um broker com management para executá-los.
 
-**58 testes e2e em 5 arquivos**, contra Postgres e RabbitMQ do `docker-compose`:
+**Testes e2e (6 arquivos `*.e2e-spec.ts`)**, contra Postgres e RabbitMQ:
 
 - `check-in.e2e-spec.ts` cria check-in real e verifica persistência,
   enriquecimento, `409` com o `pacienteId` e `dataReferencia` do registro que
@@ -643,6 +738,9 @@ passar com a integração quebrada, ele não vale.
   "o dado continua igual".
 - `prisma-checkin-repository.e2e-spec.ts` confere a query real contra o schema,
   incluindo os três estados do `statusAgendamento` e o CHECK do ciclo de vida.
+- `saude.e2e-spec.ts` confirma `200` com Postgres e RabbitMQ disponíveis e `503`
+  quando o broker é reportado indisponível, preservando o estado do Postgres na
+  resposta.
 - `rabbit-publisher.spec.ts` sobe um `ServerRMQ` de verdade e verifica que o
   envelope é `{ pattern, data }`, sem `id`, `persistent`, e que o handler recebe
   a payload. **Foi este teste que reprovou de forma intermitente** durante o
@@ -678,9 +776,10 @@ inspecionado, não porque um teste falhou.
    crash. O caminho é confirmação manual feita corretamente, e a forma correta
    nesse arranjo é um `Channel` próprio por mensagem ou um consumer que gerencia
    o próprio ack, a ser testado contra o broker, não deduzido.
-3. **Métricas e health check.** Profundidade de fila, taxa de `desistido`, tempo
-   de enriquecimento e taxa de 429 do cadastro. Hoje o sinal é o log
-   estruturado, e log não é métrica.
+3. **Metricas.** Profundidade de fila, taxa de `desistido`, tempo de
+   enriquecimento, taxa de 429 do cadastro e quantos eventos estao pendentes na
+   outbox. O `/health` já dá o básico de dependência; falta o número de negócio.
+   Log estruturado não é métrica.
 4. **Rotinas de pacing do rate limit.** O pacing é por instância; com duas
    réplicas, o intervalo efetivo cai pela metade (ADR 9). Coordenador único ou
    consumo serializado resolvem.

@@ -1,127 +1,100 @@
-# Projeto API
+# API de check-in
 
-## Description
+API NestJS/Fastify para registrar check-ins, consultar o agendamento no legado
+XML e operar os estados da fila. O desenho, os limites e as decisões estão em
+[`ARQUITETURA.md`](../ARQUITETURA.md).
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Subir com Docker Compose
 
-## Project setup
-
-```bash
-$ pnpm install
-```
-
-## Compile and run the project
+Na raiz do repositório:
 
 ```bash
-# development
-$ pnpm run start
-
-# watch mode
-$ pnpm run start:dev
-
-# production mode
-$ pnpm run start:prod
+docker compose up --build -d
 ```
 
-## Run tests
+O Compose inicia Postgres, RabbitMQ, os serviços externos, API e frontend. A
+imagem da API executa `prisma migrate deploy` antes de iniciar o servidor.
+
+- Totem: <http://localhost:5173/>
+- Recepção: <http://localhost:5173/recepcao>
+- API: <http://localhost:3000>
+- Health: <http://localhost:3000/health>
+
+## Rodar a API fora do container
+
+Suba apenas as dependências pelo Compose e, no diretório `api`, configure o
+ambiente e instale as dependências:
 
 ```bash
-# unit tests
-$ pnpm run test
-
-# e2e tests
-$ pnpm run test:e2e
-
-# test coverage
-$ pnpm run test:cov
+docker compose up -d db broker mock-service legacy-service
+cd api
+cp .env.example .env
+pnpm install
+pnpm prisma migrate deploy
+pnpm start:dev
 ```
 
-## Deployment
+`start:dev` compila e corrige os specifiers ESM antes de reiniciar a API.
+Dentro da rede Docker, os endereços são `db`, `broker`, `mock-service` e
+`legacy-service`; fora dela, use `localhost` e as portas publicadas.
 
-When you're ready to deploy your NestJS application to production, there are
-some key steps you can take to ensure it runs as efficiently as possible. Check
-out the [deployment documentation](https://docs.nestjs.com/deployment) for more
-information.
+## Configuração
 
-If you are looking for a cloud-based platform to deploy your NestJS application,
-check out [Mau](https://mau.nestjs.com), our official platform for deploying
-NestJS applications on AWS. Mau makes deployment straightforward and fast,
-requiring just a few simple steps:
+| Variável | Obrigatória | Uso |
+| --- | --- | --- |
+| `DATABASE_URL` | Sim | Conexão PostgreSQL. |
+| `BROKER_URL` | Sim | Conexão AMQP com RabbitMQ. |
+| `CADASTRO_URL` | Sim | Base HTTP do cadastro REST. |
+| `AGENDAMENTO_URL` | Sim | Base HTTP do serviço legado XML. |
+| `HTTP_TIMEOUT_MS` | Não (`5000`) | Timeout dos dois adapters HTTP. |
+| `CADASTRO_INTERVALO_MIN_MS` | Não (`2200`) | Espaçamento mínimo entre chamadas ao cadastro pelo consumidor. |
+| `OUTBOX_INTERVAL_MS` | Não (`5000`) | Intervalo de polling do outbox. |
+| `OUTBOX_LOTE` | Não (`20`) | Limite de eventos lidos por ciclo. |
+| `WEB_ORIGIN` | Não (`http://localhost:5173`) | Origem liberada por CORS. |
+
+## Rotas
+
+```text
+POST /check-ins                       cria check-in a partir do CPF
+GET  /check-ins?cpf=...               lista os check-ins do paciente
+GET  /check-ins/contagem?cpf=...      conta os check-ins do paciente
+GET  /check-ins/:checkinId            consulta um check-in
+POST /check-ins/:checkinId/iniciar    inicia o atendimento
+POST /check-ins/:checkinId/finalizar  finaliza o atendimento
+POST /check-ins/:checkinId/cancelar   cancela o check-in
+GET  /health                          verifica Postgres e RabbitMQ
+GET  /                                rota padrão do NestJS (Hello World)
+```
+
+`GET /health` responde `200` quando as dependências verificadas estão
+disponíveis e `503` quando alguma está indisponível. Ainda não há métricas de
+negócio nem uma rota de fila global.
+
+O `POST /check-ins` chama o legado XML dentro da request. O resultado é guardado
+em `statusAgendamento`: `PRESENTE`, `AUSENTE` ou `INDISPONIVEL`. Uma falha do
+legado não impede a criação do check-in. O cadastro REST é enriquecido de forma
+assíncrona; um `404` do cadastro é definitivo e não é reenfileirado.
+
+## Testes e qualidade
 
 ```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
+pnpm test src      # unitários, sem infraestrutura
+pnpm test:e2e      # requer Postgres, RabbitMQ e serviços mock
+pnpm typecheck
+pnpm lint
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to
-focus on building features rather than managing infrastructure.
+Os e2e compartilham banco e rodam sem paralelismo. O GitHub Actions executa
+typecheck, lint, testes unitários e build; um job separado sobe Postgres,
+RabbitMQ e os mocks para os testes e2e.
 
-## Observability
+## Limites conhecidos
 
-In production applications, observability is essential for understanding how
-your system behaves, detecting issues early, and maintaining reliable
-performance.
-
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your
-NestJS application, giving you deep visibility into your system with minimal
-setup:
-
-- **Distributed tracing:** Follow requests across services and understand how
-  they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow
-  operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and
-  quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand
-  system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to
-  make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes
-  with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your
-  application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance
-  degradation, SLA violations, and other anomalies so your team can react
-  quickly.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about
-  the framework.
-- For questions and support, please visit our
-  [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video
-  [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of
-  [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with
-  [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics,
-  and logging made easy. Error tracking and performance monitoring for your
-  NestJS applications.
-- Visualize your application graph and interact with the NestJS application in
-  real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official
-  [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on
-  [X](https://x.com/nestframework) and
-  [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official
-  [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors
-and support by the amazing backers. If you'd like to join them, please
-[read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- A API não tem autenticação e não expõe uma fila global.
+- Os consumidores dos eventos precisam deduplicar pelo `eventId`.
+- O dispatcher do outbox serializa réplicas com um advisory lock do Postgres.
+  Ainda há a janela at-least-once entre confirmar no RabbitMQ e marcar o evento
+  como publicado; consumidores precisam deduplicar pelo `eventId`. Eventos que
+  atingem 10 falhas saem dos lotes ativos e ficam no banco para investigação.
+- O consumidor RabbitMQ usa `noAck: true`; a fila de dead letter não recebe uma
+  mensagem se o processo cair durante o handler. Ver ADR 10 e ADR 12.
