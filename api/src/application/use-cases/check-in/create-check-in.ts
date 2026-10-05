@@ -1,10 +1,15 @@
 import { AuditoriaPort } from '@/application/services/auditoria/auditoria.port'
 import { CheckIn } from '@/application/entities/checkin'
 import { CheckInRepository } from '@/application/repositories/checkin-repository'
-import { EventosDeCheckInPort } from '@/application/services/check-in/eventos-de-check-in.port'
+import { EventoOutbox } from '@/application/entities/evento-outbox'
 import { GetOrCreatePaciente } from '@/application/use-cases/paciente/get-or-create-paciente'
 import { Injectable } from '@nestjs/common'
 import { RegistroAuditoria } from '@/application/entities/registro-auditoria'
+
+import {
+    CHECKIN_CREATED_ROUTING_KEY,
+    CheckinCreatedEvent,
+} from '@/infra/messaging/rabbit-mq/checkin-events.publisher'
 
 interface CreateCheckInRequest {
     cpf: string
@@ -24,7 +29,6 @@ export class CreateCheckIn {
     constructor(
         private checkInRepository: CheckInRepository,
         private getOrCreatePaciente: GetOrCreatePaciente,
-        private eventos: EventosDeCheckInPort,
         private auditoria: AuditoriaPort,
     ) {}
 
@@ -43,7 +47,27 @@ export class CreateCheckIn {
             statusAgendamento: 'INDISPONIVEL',
         })
 
-        await this.checkInRepository.create(checkIn)
+        const eventoId = crypto.randomUUID()
+        const occurredAt = new Date()
+
+        const payload: CheckinCreatedEvent = {
+            checkinId: checkIn.id,
+            pacienteId: checkIn.pacienteId,
+            status: checkIn.status,
+            eventId,
+            occurredAt: occurredAt.toISOString(),
+        }
+
+        const outbox = EventoOutbox.criar({
+            tipo: 'CHECKIN_CRIADO',
+            routingKey: CHECKIN_CREATED_ROUTING_KEY,
+            payload: payload as Record<string, unknown>,
+            checkinId: checkIn.id,
+            eventoId,
+            occurredAt,
+        })
+
+        await this.checkInRepository.create(checkIn, [outbox])
 
         await this.auditoria.registrar(
             new RegistroAuditoria(
@@ -57,12 +81,6 @@ export class CreateCheckIn {
                 checkIn.pacienteId,
             ),
         )
-
-        const eventoId = this.eventos.publicarCheckinCriado({
-            checkinId: checkIn.id,
-            pacienteId: checkIn.pacienteId,
-            status: checkIn.status,
-        })
 
         return {
             checkIn,

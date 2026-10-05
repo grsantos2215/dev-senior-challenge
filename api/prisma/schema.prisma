@@ -37,6 +37,8 @@ enum AcaoLog {
   CADASTRO_CONSULTADO
   AGENDAMENTO_CONSULTADO
   INTEGRACAO_FALHOU
+  OUTBOX_PUBLICADO
+  OUTBOX_DESISTIDO
 }
 
 model Paciente {
@@ -109,7 +111,7 @@ model Log {
   // Referencia historica, sem FK de proposito: a linha de log precisa
   // sobreviver ao check-in e ao paciente, e nenhuma das duas pode ser
   // apagada por causa disso.
-  checkinId String? @map("checkin_id") @db.Uuid
+  checkinId  String? @map("checkin_id") @db.Uuid
   pacienteId String? @map("paciente_id") @db.Uuid
 
   criadoEm DateTime @default(now()) @map("criado_em")
