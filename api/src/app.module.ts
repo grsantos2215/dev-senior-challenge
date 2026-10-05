@@ -7,6 +7,7 @@ import { CheckInModule } from './infra/check-in/check-in.module'
 import { OutboxModule } from './infra/messaging/outbox/outbox.module'
 import { ConfigModule } from '@nestjs/config'
 import { MessagingModule } from './infra/messaging/messaging.module'
+import { SaudeModule } from './infra/http/saude/saude.module'
 
 @Module({
     imports: [
@@ -17,6 +18,7 @@ import { MessagingModule } from './infra/messaging/messaging.module'
         CadastroModule,
         CheckInModule,
         OutboxModule,
+        SaudeModule,
     ],
     controllers: [AppController],
     providers: [AppService],

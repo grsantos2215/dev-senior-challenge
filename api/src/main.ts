@@ -37,6 +37,12 @@ async function server() {
 
     app.useGlobalPipes(new ValidationPipe({}))
 
+    app.enableCors({
+        origin: process.env.WEB_ORIGIN ?? 'http://localhost:5173',
+        methods: ['GET', 'POST', 'OPTIONS'],
+        allowedHeaders: ['Content-Type'],
+    })
+
     app.enableShutdownHooks()
 
     await app.startAllMicroservices()
