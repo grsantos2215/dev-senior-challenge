@@ -1,0 +1,148 @@
+name: api
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      rabbitmq:
+        image: rabbitmq:3-management-alpine
+        ports:
+          - 5672:5672
+          - 15672:15672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      BROKER_URL: amqp://guest:guest@localhost:5672
+      RABBITMQ_MANAGEMENT_URL: http://localhost:15672
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: api/pnpm-lock.yaml
+
+      - name: Instalar dependencias
+        working-directory: api
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: api
+        run: pnpm typecheck
+
+      - name: Lint
+        working-directory: api
+        run: pnpm lint
+
+      - name: Testes unitarios
+        working-directory: api
+        run: pnpm test src
+
+      - name: Build
+        working-directory: api
+        run: pnpm build
+
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      rabbitmq:
+        image: rabbitmq:3-alpine
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: api/pnpm-lock.yaml
+
+      - name: Instalar dependencias
+        working-directory: api
+        run: pnpm install --frozen-lockfile
+
+      - name: Gerar client Prisma
+        working-directory: api
+        run: pnpm prisma generate
+
+      - name: Instalar deps do mock de cadastro
+        working-directory: mock-service
+        run: npm install
+
+      - name: Instalar deps do legado XML
+        working-directory: legacy-service
+        run: npm install
+
+      # Os dois mocks sobem como processo em background e não como `services:` do
+      # GitHub Actions: eles não têm healthcheck, e sem espera o primeiro teste
+      # corre contra uma porta ainda fechada e falha por ECONNREFUSED, não por bug.
+      - name: Subir mocks
+        run: |
+          node mock-service/server.js > /tmp/mock.log 2>&1 &
+          node legacy-service/server.js > /tmp/legacy.log 2>&1 &
+          for port in 4000 4100; do
+            for _ in $(seq 1 30); do
+              if curl -s -o /dev/null "http://localhost:$port"; then break; fi
+              sleep 1
+            done
+            if ! curl -s -o /dev/null "http://localhost:$port"; then
+              echo "::error::mock na porta $port nao subiu"
+              cat /tmp/mock.log /tmp/legacy.log
+              exit 1
+            fi
+          done
+
+      - name: Aplicar migrations
+        working-directory: api
+        env:
+          DATABASE_URL: postgresql://app:app@localhost:5432/app?schema=public
+        run: pnpm prisma migrate deploy
+
+      - name: Testes e2e
+        working-directory: api
+        env:
+          DATABASE_URL: postgresql://app:app@localhost:5432/app?schema=public
+          BROKER_URL: amqp://guest:guest@localhost:5672
+          # getOrThrow no boot: sem estas duas variáveis a app não sobe, mesmo
+          # que o teste em questão não chegue a chamar a integração.
+          CADASTRO_URL: http://localhost:4000
+          AGENDAMENTO_URL: http://localhost:4100
+        run: pnpm test:e2e
