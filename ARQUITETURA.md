@@ -1,8 +1,4 @@
-# Arquitetura & Decisões — [seu nome]
-
-> Este é o documento mais importante da sua entrega. Não precisa ser longo —
-> precisa deixar claro **o que você decidiu e por quê**. Sinta-se livre para
-> ajustar a estrutura.
+# Arquitetura & Decisões — Gabriel Ferraz dos Santos
 
 ## Visão geral
 
@@ -14,24 +10,24 @@ o paciente está no caminho da request.** O que é enriquecimento vai para fila.
    POST /check-ins { cpf }
           |
           v
-   +----------------------------------------------+
-   |  CheckInController -> CreateCheckIn           |
-   |      |                                       |
+   +------------------------------------------------+
+   |  CheckInController -> CreateCheckIn            |
+   |      |                                         |
    |      +-- GetOrCreatePaciente (INSERT, degradado|
-   |      |     se o cadastro falhar)              |
-   |      |                                       |
+   |      |     se o cadastro falhar)               |
+   |      |                                         |
    |      +---> publica checkin.created  ----------+--> exchange checkin.events
-   |      |                                       |      (topic)
-   |      +---> enfileira { pacienteId, tentativa }|
-   |              |                                |
-   |              v                                |
-   |      cadastro.enriquecer  (duravel, prefetch 1)
-   |              |                                |
-   |              v                                |
-   |   CadastroEnriquecimentoConsumidor            |
-   |      -> mock de cadastro (~600ms, 10% falha) |
-   |      -> enriquece ou reinsere (max 3)         |
-   +----------------------------------------------+
+   |      |                                         |      (topic)
+   |      +---> enfileira { pacienteId, tentativa } |
+   |              |                                 |
+   |              v                                 |
+   |      cadastro.enriquecer  (duravel, prefetch 1)|
+   |              |                                 |
+   |              v                                 |
+   |   CadastroEnriquecimentoConsumidor             |
+   |      -> mock de cadastro (~600ms, 10% falha)   |
+   |      -> enriquece ou reinsere (max 3)          |
+   +------------------------------------------------+
           |
           v
    Postgres: checkins + pacientes + logs (append-only)
@@ -76,7 +72,7 @@ existe. Repetir uma transição devolve `eventoId: null` e não publica de novo.
 
 **Consultar por CPF é rota, e a tradução é da aplicação.** O totem envia CPF;
 para resolver o `pacienteId`, é a função do `ListCheckInsByCpf` e
-`CountCheckInsByCpf`, não do controller, que não fala com repositório. CPF
+`CountCheckInsByCpf`, não do controller, que não conversa com repositório. CPF
 desconhecido responde `404`, e isso é o que o distingue de paciente cadastrado
 sem check-in, que responde `200` com lista vazia e contagem zero.
 
@@ -128,12 +124,7 @@ e de observabilidade.
     - O Prisma não versiona índice parcial → o
       `CREATE INDEX ... WHERE publicado_em IS NULL` foi escrito à mão após a
       migration.
-- **Status: decisão tomada, ainda não implementada.** A tabela `outbox_events`
-  existe no schema, mas o check-in publica `checkin.created` direto por
-  `CheckinEventsPublisher`, sem transação e sem dispatcher. Ou seja: **a janela
-  de perda que motivou este ADR continua aberta.** Não estou fingindo o
-  contrário — o ADR fica como contrato do que falta, e o publish direto é o que
-  roda.
+- **Status:** implementado. Eventos são gravados na mesma transação que o check-in, com dispatcher publicando via confirmação (at-least-once).
 
 ### ADR 2 - Log append-only
 
@@ -149,8 +140,8 @@ e de observabilidade.
   negócio continua.
 - **O que entra em `contexto`:** só identificadores internos e o que explica a
   transição (`de`, `para`, número da tentativa, nome da integração). A entidade
-  `RegistroAuditoria` recusa a construção se aparecer uma chave de dado pessoal
-  — cpf, cnpj, rg, nome, sobrenome, nascimento, email, telefone, endereço — em
+  `RegistroAuditoria` recusa a construção se aparecer uma chave de dado pessoal:
+  cpf, cnpj, rg, nome, sobrenome, nascimento, email, telefone, endereço; Em
   qualquer nível de aninhamento, dentro de objetos e de arrays. A regra verifica
   **chaves**, não valores: um CPF solto dentro de `contexto: { cpf }` entra pela
   chave, mas heurística sobre formato de valor geraria falso positivo com um
@@ -176,7 +167,7 @@ e de observabilidade.
 - **Consequências:**
     - `contexto` é jsonb sem schema e pode virar depósito de lixo. Mitigação em
       duas frentes: a guarda de dado pessoal no domínio, que é testada, e o
-      `acao` enum, que já diz o que aconteceu — a mensagem em texto livre não
+      `acao` enum, que já diz o que aconteceu, a mensagem em texto livre não
       traria informação que o enum e o `contexto` não deem.
     - Sem FK, `checkinId` pode apontar para um check-in que não existe mais. É o
       comportamento desejado: o log registra o que aconteceu naquele momento, e
@@ -415,8 +406,8 @@ e de observabilidade.
   classificada em três erros de domínio, porque eles têm consumidores
   diferentes: `CadastroRateLimitado` (429), `CadastroIndisponivel` (5xx e
   timeout) e `PacienteNaoEncontrado` (404). As duas primeiras valem retry; a
-  terceira é definitiva. O ritmo é imposto no cliente — `prefetchCount: 1` e
-  intervalo mínimo de 2200ms entre chamadas — em vez de tentar negociar com o
+  terceira é definitiva. O ritmo é imposto no cliente, `prefetchCount: 1` e
+  intervalo mínimo de 2200ms entre chamadas, em vez de tentar negociar com o
   mock.
 - **Alternativas consideradas:**
     - Sem timeout: herda o default do axios, que pode passar de minutos e segura
@@ -503,7 +494,7 @@ e de observabilidade.
   `nack` sem requeue, o broker dead-letterizava, e a mensagem chegava na DLQ com
   `x-death.reason = "rejected"`. A rede contra crash existia e funcionava. Foi
   ela que se perdeu. - O que cobre o caso hoje é retry no nível da aplicação: o
-  consumidor devolve `{ status: 'adiado' }`, reenfileira com `publicarOuFalhar`
+- **Status:** implementado. Eventos são gravados na mesma transação que o check-in, com dispatcher publicando via confirmação (at-least-once).
   e desiste em `MAX_TENTATIVAS`. Cobre falha de integração, que é o caso comum,
   e não cobre crash de programação. - **Consequência a registar:** a topagem da
   DLQ continua correta e ainda é exercitada pelo `fila.spec.ts`, mas **é
@@ -563,7 +554,7 @@ e de observabilidade.
 - **Causa raiz:** com `noAck: false`, o `ServerRMQ` entrega a mensagem e espera
   um `ack` que não vinha. `handleEvent` do Nest só confirma o recebimento quando
   o `RmqContext` chega ao handler, e com `@EventPattern` sem parâmetro de
-  contexto esse objeto não existe — logo nunca havia `ack`. Não era configuração
+  contexto esse objeto não existe, logo nunca havia `ack`. Não era configuração
   de ack: era ausência de ack. Cada mensagem ficava presa para sempre. Já tinha
   tentado `ack()` manual, o que produzia `Channel closed` na hora seguinte.
 - **Decisão:** `noAck: true` em `connectMicroservice`, e um `RabbitPublisher`
@@ -596,8 +587,8 @@ e de observabilidade.
       nomeada explicitamente. Nomear a fila é o que torna o teste hermético: sem
       `queue`, o Nest usa o default e o broker gera `amq.gen-*`, e aí o teste
       precisa adivinhar qual fila é a dele procurando "qualquer fila nova com
-      consumidor" — o que dá falso positivo quando outro teste sobe consumidor
-      em paralelo. Foi o que causou uma falha intermitente antes de o nome ser
+      consumidor", o que dá falso positivo quando outro teste sobe consumidor em
+      paralelo. Foi o que causou uma falha intermitente antes de o nome ser
       explícito.
 
 ## Segurança & LGPD
@@ -658,7 +649,7 @@ passar com a integração quebrada, ele não vale.
   de estado, idempotência, `404`, pré-condição de início e ausência de
   publicação quando o save falha. Os quatro use cases de check-in estão
   cobertos, incluindo a asserção explícita de que a repetição **não** publica um
-  segundo evento — e de que a repetição também **não** audita, porque auditar a
+  segundo evento, e de que a repetição também **não** audita, porque auditar a
   mesma transição duas vezes seria inventar um evento que não aconteceu.
 - `registro-auditoria.spec.ts` cobre a guarda de dado pessoal: recusa cpf, nome,
   nascimento, email e telefone, tanto em chave direta quanto aninhados em objeto
@@ -718,10 +709,9 @@ inspecionado, não porque um teste falhou.
 - Teste de carga. O pacing de 2,2s foi justificado por leitura do rate limit,
   não por medição sob pressão.
 - Teste de que o log sobrevive à eliminação do paciente. O `logs.e2e-spec.ts`
-  prova que o log não impede o `DELETE` do check-in — foi o que a remoção da FK
-  resolveu — mas não há cenário que apague paciente e confira o log
-  sobrevivente, porque não há endpoint nem rotina que apague paciente em
-  produção ainda.
+  prova que o log não impede o `DELETE` do check-in, foi o que a remoção da FK
+  resolveu, mas não há cenário que apague paciente e confira o log sobrevivente,
+  porque não há endpoint nem rotina que apague paciente em produção ainda.
 - `fila.spec.ts` e a API no ar no mesmo instante: é o problema de hermeticidade
   de que fala o ADR 10. O spec é feito para rodar com o broker, e o broker com o
   consumer real é outra história.
@@ -739,7 +729,7 @@ inspecionado, não porque um teste falhou.
 3. **Redelivery com garantia.** `noAck: true` trocou travamento por perda em
    crash. O caminho é confirmação manual feita corretamente, e a forma correta
    nesse arranjo é um `Channel` próprio por mensagem ou um consumer que gerencia
-   o próprio ack — a ser testado contra o broker, não deduzido.
+   o próprio ack, a ser testado contra o broker, não deduzido.
 4. **Métricas e health check.** Profundidade de fila, taxa de `desistido`, tempo
    de enriquecimento e taxa de 429 do cadastro. Hoje o sinal é o log
    estruturado, e log não é métrica.
@@ -751,3 +741,4 @@ inspecionado, não porque um teste falhou.
 7. **Normalizar a linguagem das routing keys** (`checkin.created` contra as três
    em português), em uma major version do contrato de eventos, com os
    consumidores avisados.
+
