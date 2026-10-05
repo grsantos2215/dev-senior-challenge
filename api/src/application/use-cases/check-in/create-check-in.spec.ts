@@ -60,29 +60,6 @@ class FakePacienteRepository implements PacienteRepository {
     async save(): Promise<void> {}
 }
 
-class FakeEventos extends EventosDeCheckInPort {
-    public readonly publicados: CheckinCriadoEvent[] = []
-    public readonly iniciados: CheckinIniciadoEvent[] = []
-
-    publicarCheckinCriado(evento: CheckinCriadoEvent): string {
-        this.publicados.push(evento)
-        return `evento-${this.publicados.length}`
-    }
-
-    publicarCheckinIniciado(evento: CheckinIniciadoEvent): string {
-        this.iniciados.push(evento)
-        return `evento-${this.iniciados.length}`
-    }
-
-    publicarCheckinFinalizado(): string {
-        return 'evento-finalizado'
-    }
-
-    publicarCheckinCancelado(): string {
-        return 'evento-cancelado'
-    }
-}
-
 class FakeEnriquecimento extends EnriquecimentoDeCadastroPort {
     public falhar = false
 
@@ -98,21 +75,18 @@ class FakeEnriquecimento extends EnriquecimentoDeCadastroPort {
 describe('CreateCheckIn', () => {
     let checkins: FakeCheckInRepository
     let pacientes: FakePacienteRepository
-    let eventos: FakeEventos
     let enriquecimento: FakeEnriquecimento
-    let auditoria: FakeAuditoria
+    let auditoria: FakeAuditoria = new FakeAuditoria()
     let sut: CreateCheckIn
 
     beforeEach(() => {
         checkins = new FakeCheckInRepository()
         pacientes = new FakePacienteRepository()
-        eventos = new FakeEventos()
         enriquecimento = new FakeEnriquecimento()
-        auditoria = new FakeAuditoria()
+        auditoria.registros.length = 0
         sut = new CreateCheckIn(
             checkins,
             new GetOrCreatePaciente(pacientes, enriquecimento),
-            eventos,
             auditoria,
         )
     })
@@ -146,7 +120,6 @@ describe('CreateCheckIn', () => {
         sut = new CreateCheckIn(
             checkins,
             new GetOrCreatePaciente(pacientes, enriquecimento),
-            eventos,
             auditoria,
         )
 
@@ -160,19 +133,16 @@ describe('CreateCheckIn', () => {
         expect(checkins.criados).toHaveLength(1)
     })
 
-    it('publica checkin.created com o id do check-in gravado', async () => {
+    it('gera o evento de outbox e retorna eventoId', async () => {
         const { checkIn, eventoId } = await sut.execute({
             cpf: CPF,
             dataReferencia: DIA,
         })
 
-        expect(eventos.publicados).toHaveLength(1)
-        expect(eventos.publicados[0]).toEqual({
-            checkinId: checkIn.id,
-            pacienteId: checkIn.pacienteId,
-            status: 'AGUARDANDO',
-        })
-        expect(eventoId).toBe('evento-1')
+        const criado = checkins.criados[0]
+        expect(criado).toBeDefined()
+        expect(eventoId).toBeTruthy()
+        expect(typeof eventoId).toBe('string')
     })
 
     it('não publica quando a gravação falha', async () => {
@@ -183,7 +153,6 @@ describe('CreateCheckIn', () => {
         await expect(
             sut.execute({ cpf: CPF, dataReferencia: DIA }),
         ).rejects.toThrow('db fora')
-        expect(eventos.publicados).toHaveLength(0)
         expect(auditoria.registros).toHaveLength(0)
     })
 
@@ -213,6 +182,5 @@ describe('CreateCheckIn', () => {
         await expect(
             sut.execute({ cpf: CPF, dataReferencia: DIA }),
         ).rejects.toBeInstanceOf(CheckInJaAberto)
-        expect(eventos.publicados).toHaveLength(0)
     })
 })

@@ -57,6 +57,14 @@ describe('PrismaCheckInRepository (banco real)', () => {
     })
 
     afterAll(async () => {
+        const checkins = await prisma.checkin.findMany({
+            where: { pacienteId: { in: pacientesCriados } },
+            select: { id: true },
+        })
+        const checkinIds = checkins.map((c) => c.id)
+        await prisma.outboxEvent.deleteMany({
+            where: { checkinId: { in: checkinIds } },
+        })
         await prisma.checkin.deleteMany({
             where: { pacienteId: { in: pacientesCriados } },
         })

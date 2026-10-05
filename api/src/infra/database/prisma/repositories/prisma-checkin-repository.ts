@@ -1,6 +1,7 @@
 import { CheckIn } from '@/application/entities/checkin'
 import { CheckInJaAberto } from '@/application/use-cases/check-in/errors/check-in-ja-aberto'
 import { CheckInRepository } from '@/application/repositories/checkin-repository'
+import { EventoOutbox } from '@/application/entities/evento-outbox'
 import { Injectable } from '@nestjs/common'
 import { Prisma } from '@/generated/prisma/client'
 import { PrismaCheckInMapper } from '../mappers/prisma-checkin-mapper'
@@ -31,12 +32,27 @@ export class PrismaCheckInRepository implements CheckInRepository {
         return this.prisma.checkin.count({ where: { pacienteId } })
     }
 
-    async create(checkIn: CheckIn): Promise<void> {
+    async create(checkIn: CheckIn, eventos: EventoOutbox[] = []): Promise<void> {
         const raw = PrismaCheckInMapper.toPrisma(checkIn)
 
         try {
-            await this.prisma.checkin.create({
-                data: raw,
+            await this.prisma.$transaction(async (tx) => {
+                await tx.checkin.create({ data: raw })
+
+                if (eventos.length > 0) {
+                    await tx.outboxEvent.createMany({
+                        data: eventos.map((evento) => ({
+                            id: evento.id,
+                            tipo: evento.tipo,
+                            routingKey: evento.routingKey,
+                            payload: evento.payload as Prisma.InputJsonValue,
+                            checkinId: evento.checkinId,
+                            tentativas: evento.tentativas,
+                            criadoEm: evento.criadoEm,
+                            publicadoEm: evento.publicadoEm,
+                        })),
+                    })
+                }
             })
         } catch (erro) {
             throw this.tratarViolacaoDeUnicidade(erro, checkIn)
@@ -59,11 +75,33 @@ export class PrismaCheckInRepository implements CheckInRepository {
         return erro
     }
 
-    async save(checkIn: CheckIn): Promise<void> {
+    async save(checkIn: CheckIn, eventos: EventoOutbox[] = []): Promise<void> {
         const { id, ...dados } = PrismaCheckInMapper.toPrisma(checkIn)
 
         try {
-            await this.prisma.checkin.updateMany({ where: { id }, data: dados })
+            await this.prisma.$transaction(async (tx) => {
+                const resultado = await tx.checkin.updateMany({
+                    where: { id },
+                    data: dados,
+                })
+
+                if (resultado.count === 0) return
+
+                if (eventos.length > 0) {
+                    await tx.outboxEvent.createMany({
+                        data: eventos.map((evento) => ({
+                            id: evento.id,
+                            tipo: evento.tipo,
+                            routingKey: evento.routingKey,
+                            payload: evento.payload as Prisma.InputJsonValue,
+                            checkinId: evento.checkinId,
+                            tentativas: evento.tentativas,
+                            criadoEm: evento.criadoEm,
+                            publicadoEm: evento.publicadoEm,
+                        })),
+                    })
+                }
+            })
         } catch (erro) {
             if (
                 erro instanceof Prisma.PrismaClientKnownRequestError &&

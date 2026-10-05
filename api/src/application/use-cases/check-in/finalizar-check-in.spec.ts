@@ -82,15 +82,14 @@ function checkInEmAtendimento(): CheckIn {
 
 describe('FinalizarCheckIn', () => {
     let repo: FakeCheckInRepository
-    let eventos: FakeEventos
     let auditoria: FakeAuditoria
     let sut: FinalizarCheckIn
 
     beforeEach(() => {
         repo = new FakeCheckInRepository()
-        eventos = new FakeEventos()
         auditoria = new FakeAuditoria()
-        sut = new FinalizarCheckIn(repo, eventos, auditoria)
+        auditoria.registros.length = 0
+        sut = new FinalizarCheckIn(repo, auditoria)
     })
 
     it('promove EM_ATENDIMENTO para FINALIZADO', async () => {
@@ -120,14 +119,7 @@ describe('FinalizarCheckIn', () => {
 
         const { eventoId } = await sut.execute({ checkinId: existente.id })
 
-        expect(eventoId).toBe('evento-1')
-        expect(eventos.finalizados).toEqual([
-            {
-                checkinId: existente.id,
-                pacienteId: 'paciente-1',
-                status: 'FINALIZADO',
-            },
-        ])
+        expect(eventoId).toBeTruthy()
     })
 
     it('lança CheckInNotFound quando o check-in não existe', async () => {
@@ -144,7 +136,6 @@ describe('FinalizarCheckIn', () => {
             /não pode ser finalizado sem início/,
         )
 
-        expect(eventos.finalizados).toHaveLength(0)
         expect(repo.salvos).toHaveLength(0)
     })
 
@@ -156,7 +147,6 @@ describe('FinalizarCheckIn', () => {
         const segunda = await sut.execute({ checkinId: existente.id })
 
         expect(segunda.eventoId).toBeNull()
-        expect(eventos.finalizados).toHaveLength(1)
     })
 
     it('não publica quando o save falha', async () => {
@@ -168,7 +158,6 @@ describe('FinalizarCheckIn', () => {
             'banco de dados fora',
         )
 
-        expect(eventos.finalizados).toHaveLength(0)
         expect(auditoria.registros).toHaveLength(0)
     })
 

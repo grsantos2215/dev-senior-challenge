@@ -45,13 +45,15 @@ describe('logs append-only (e2e)', () => {
     })
 
     afterAll(async () => {
-        await prisma.checkin.deleteMany({
-            where: { id: { in: checkinIds } },
-        })
-        await prisma.paciente.deleteMany({
-            where: { id: { in: pacienteIds } },
-        })
-        await app.close()
+        if (prisma) {
+            try { await prisma.outboxEvent.deleteMany({}) } catch {}
+            try { await prisma.checkin.deleteMany({}) } catch {}
+            try { await prisma.paciente.deleteMany({}) } catch {}
+            try { await prisma.log.deleteMany({}) } catch {}
+        }
+        if (app) {
+            try { await app.close() } catch {}
+        }
     })
 
     describe('o que a aplicação escreve', () => {
@@ -140,3 +142,4 @@ describe('logs append-only (e2e)', () => {
         })
     })
 })
+

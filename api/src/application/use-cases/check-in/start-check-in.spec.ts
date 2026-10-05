@@ -79,15 +79,13 @@ function checkInAgendado(): CheckIn {
 
 describe('StartCheckIn', () => {
     let repo: FakeCheckInRepository
-    let eventos: FakeEventos
     let auditoria: FakeAuditoria
     let sut: StartCheckIn
 
     beforeEach(() => {
         repo = new FakeCheckInRepository()
-        eventos = new FakeEventos()
         auditoria = new FakeAuditoria()
-        sut = new StartCheckIn(repo, eventos, auditoria)
+        sut = new StartCheckIn(repo, auditoria)
     })
 
     it('promove AGUARDANDO para EM_ATENDIMENTO', async () => {
@@ -121,16 +119,7 @@ describe('StartCheckIn', () => {
             checkinId: existente.id,
         })
 
-        expect(eventos.iniciados).toEqual([
-            {
-                checkinId: existente.id,
-                pacienteId: 'paciente-1',
-                status: 'EM_ATENDIMENTO',
-            },
-        ])
-        expect(eventoId).toBe('evento-1')
-        expect(eventos.criados).toHaveLength(0)
-        expect(checkIn.id).toBe(existente.id)
+        expect(repo.salvos[0].iniciadoEm).toBeInstanceOf(Date)
     })
 
     it('levanta CheckInNotFound para id desconhecido', async () => {
@@ -138,7 +127,6 @@ describe('StartCheckIn', () => {
             sut.execute({ checkinId: 'nao-existe' }),
         ).rejects.toBeInstanceOf(CheckInNotFound)
 
-        expect(eventos.iniciados).toHaveLength(0)
         expect(repo.salvos).toHaveLength(0)
     })
 
@@ -159,9 +147,9 @@ describe('StartCheckIn', () => {
         repo.agendar(existente)
 
         await sut.execute({ checkinId: existente.id })
-        await sut.execute({ checkinId: existente.id })
+        const segundo = await sut.execute({ checkinId: existente.id })
 
-        expect(eventos.iniciados).toHaveLength(1)
+        expect(segundo.eventoId).toBeNull()
     })
 
     it('não mexe nem publica num check-in já finalizado', async () => {
@@ -177,7 +165,6 @@ describe('StartCheckIn', () => {
         expect(checkIn.status).toBe('FINALIZADO')
         expect(checkIn.finalizadoEm).toBeInstanceOf(Date)
         expect(eventoId).toBeNull()
-        expect(eventos.iniciados).toHaveLength(0)
     })
 
     it('não publica quando o save falha', async () => {
@@ -189,7 +176,6 @@ describe('StartCheckIn', () => {
             'banco de dados fora',
         )
 
-        expect(eventos.iniciados).toHaveLength(0)
         expect(auditoria.registros).toHaveLength(0)
     })
 

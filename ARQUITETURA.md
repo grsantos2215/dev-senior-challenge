@@ -39,7 +39,8 @@ Os dois sistemas externos entram **fora** do caminho da request:
   consultado pelo consumidor da fila, nunca pela request. A request grava o
   paciente em estado degradado (`cadastroConfirmado = false`) e segue.
 - **Legado de agendamento** (XML, ~800ms, falha 10%): consultado dentro da
-  request porque o tri-state `statusAgendamento` é o dado, não enriquecimento.
+  request porque os três estados de `statusAgendamento` é o dado, não
+  enriquecimento.
 
 O ciclo de vida do check-in tem quatro eventos de domínio, publicados no mesmo
 exchange `checkin.events`: `checkin.created`, `checkin.iniciado`,
@@ -78,11 +79,6 @@ sem check-in, que responde `200` com lista vazia e contagem zero.
 
 **Deixado como desenho, deliberadamente:**
 
-- **O dispatcher do outbox (ADR 1).** A tabela existe, o ADR inteiro existe, o
-  código não. Publicar direto é o que roda, e a janela de perda que motivou o
-  ADR continua aberta. Não implementei porque o enunciado não pede consistência
-  transacional com o broker, e um poller sem caso real é infraestrutura para
-  manter sem ganho. Está escrito como dívida, não como escolha fechada.
 - **Circuit breaker e cache do cadastro REST** (ADR 9): o pacing de 2,2s com
   teto de 3 tentativas já resolve o caso prático.
 - **Métricas e health check.** O enunciado não pede, e não quis inventar um
@@ -124,7 +120,6 @@ e de observabilidade.
     - O Prisma não versiona índice parcial → o
       `CREATE INDEX ... WHERE publicado_em IS NULL` foi escrito à mão após a
       migration.
-- **Status:** implementado. Eventos são gravados na mesma transação que o check-in, com dispatcher publicando via confirmação (at-least-once).
 
 ### ADR 2 - Log append-only
 
@@ -134,10 +129,8 @@ e de observabilidade.
 - **Decisão:** tabela `logs` **append-only**, com `acao` enum estruturado no
   lugar de `mensagem` em texto livre, `contexto` em jsonb, e trigger
   `BEFORE UPDATE OR DELETE` que levanta exceção. Sem data de atualização, de
-  propósito, pois um log não serve para ser atualizado, e sim para auditoria. O
-  `checkinId` e o `pacienteId` são referência histórica **sem chave
-  estrangeira**, e a gravação é _best-effort_: se o log falhar, o fluxo de
-  negócio continua.
+  propósito. O `checkinId` e o `pacienteId` são referência histórica **sem chave
+  estrangeira**, e a gravação não trava o fluxo.
 - **O que entra em `contexto`:** só identificadores internos e o que explica a
   transição (`de`, `para`, número da tentativa, nome da integração). A entidade
   `RegistroAuditoria` recusa a construção se aparecer uma chave de dado pessoal:
@@ -157,7 +150,7 @@ e de observabilidade.
     - FK `ON DELETE SET NULL` para `checkin` e `paciente`: foi o que estava no
       schema, e é impossível de cumprir. `SET NULL` é um `UPDATE`, então o
       trigger bloqueia: apagar um check-in que já tinha log levantava
-      `logs sao append-only`. O efeito era transformar "não se apaga log" em
+      `logs são append-only`. O efeito era transformar "não se apaga log" em
       "não se apaga nada", inclusive na limpeza dos testes. Tirar a FK resolve:
       o log sobreviver à entidade observada é exatamente o que um log de
       auditoria precisa fazer.
@@ -168,16 +161,15 @@ e de observabilidade.
     - `contexto` é jsonb sem schema e pode virar depósito de lixo. Mitigação em
       duas frentes: a guarda de dado pessoal no domínio, que é testada, e o
       `acao` enum, que já diz o que aconteceu, a mensagem em texto livre não
-      traria informação que o enum e o `contexto` não deem.
+      traria informação que o enum e o `contexto` já não fornecem.
     - Sem FK, `checkinId` pode apontar para um check-in que não existe mais. É o
       comportamento desejado: o log registra o que aconteceu naquele momento, e
       os índices continuam existindo para a consulta por check-in.
     - O direito ao esquecimento pede `DELETE`, e um log que recusa `DELETE` não
       atende. Resolvi da seguinte forma: como o log não guarda informações
       pessoais, ele sobrevive à eliminação do paciente sem persistir o dado.
-    - Auditar é _best-effort_ de propósito. Perder um registro é ruim; perder um
-      check-in porque a tabela de log estava indisponível é pior. A falha de
-      auditoria soa no log da aplicação, não na resposta ao paciente.
+    - Auditar é _best-effort_ de propósito. A falha de auditoria soa no log da
+      aplicação, não na resposta ao paciente.
     - Não existe endpoint para ler os logs. A consulta é feita pelo repositório
       (`findManyByCheckIn` / `findManyByPaciente`), o que evita criar superfície
       HTTP nova sem necessidade.
@@ -193,19 +185,13 @@ e de observabilidade.
   routing keys, uma por evento do ciclo de vida: `checkin.created`,
   `checkin.iniciado`, `checkin.finalizado` e `checkin.cancelado`. Mensagens
   `persistent` e **sem informações pessoais no payload**.
-- **A inconsistência de idioma nas routing keys é minha e está de pé.** A
-  primeira ficou em inglês (`checkin.created`) e as outras três em português.
-  Renomear `checkin.created` quebraria consumidores, e routing key é contrato
-  (consequência abaixo), então não renormalizo agora: fica registrado como
-  dívida e o nome novo segue o do momento em que foi escrito.
 - **Alternativas consideradas:**
     - **MQTT:** era o que o código original usava (`ServerMqtt`). Ficou errado,
       pois o broker expõe AMQP e o plugin `rabbitmq_mqtt` não está habilitado na
       imagem. Caia assim que a primeira conexão acontecia.
     - HTTP/webhook para cada consumidor: acopla a API à disponibilidade de cada
       consumidor, exatamente o que o broker evita.
-    - Kafka: não está no compose e é desproporcional para um evento por
-      check-in.
+    - Kafka: é desproporcional para um evento por check-in.
     - Exchange `fanout`: perde o roteamento por tipo de evento. Com `topic`, o
       painel pode assinar só `checkin.*`.
 - **Consequências:**
@@ -218,7 +204,7 @@ e de observabilidade.
       no payload existe para isso.
     - Routing key é contrato. Mudá-la quebra consumidores silenciosamente.
 
-### ADR 4 - Status de agendamento como tri-state
+### ADR 4 - Status de agendamento com três estados
 
 - **Contexto:** o sistema legado devolve `possuiAgendamento` booleano, mas falha
   com `500` em ~10% das chamadas. O README do legado faz a pergunta direto: _"um
@@ -233,11 +219,9 @@ e de observabilidade.
     - Booleano `possuiAgendamento`: confunde "não tem agendamento" com "não deu
       para perguntar". Descartado; é o que o DTO original fazia, vide os commits
       iniciais.
-    - `boolean` nullable (null = não sei): funciona, mas a distinção entre "não
-      consultou" e "consultou e vazio" se perde, e é mais fácil de errar em
-      código.
-    - Retry no legado até responder: converte 10% de falha em latência pior para
-      todo mundo.
+    - `boolean` nullable: funciona, mas a distinção entre "não consultou" e
+      "consultou e vazio" é perdida, e é mais fácil de errar em código.
+    - Retry no legado até responder: converte 10% de falha em latência.
 - **Consequências:**
     - O default `INDISPONIVEL` força a decisão explícita na aplicação, não dá
       para criar check-in com `AUSENTE` por acidente.
@@ -333,8 +317,8 @@ e de observabilidade.
     - Deixar o CHECK como estava e gerar `iniciado_em` na aplicação: preserva o
       schema e mente no dado. O registro fica errado.
     - Criar um `cancelado_em` separado de `finalizado_em`: distingue as duas
-      coisas, mas são o mesmo evento e custa uma coluna e uma segunda entrada no
-      CHECK.
+      coisas, mas são o mesmo evento e adiciona uma coluna e uma segunda entrada
+      no CHECK.
     - Barrar cancelamento de check-in que não começou: obriga a recepção a
       chamar `iniciado()` antes de cancelar, o que é mais trabalho para a
       recepção.
@@ -345,20 +329,20 @@ e de observabilidade.
     - `finalizado()` ganhou guard explícito, porque `validar()` reportaria o
       status alvo (`FINALIZADO exige iniciadoEm`) em vez do que o chamador fez
       de errado.
-    - O CHECK ficou mais frouxo, e a entidade ficou mais forte. É a direção
-      certa: o banco é a última linha de defesa, não a única.
+    - O CHECK ficou mais frouxo, e a entidade ficou mais robusta. É a direção
+      certa: o banco é a última linha de defesa.
     - **Os dois CHECKs agora estão duplicados em `CheckIn.validar()`.** Essa
       duplicação é deliberada e cobre a mudança do SQL; o teste de conformidade
       em `checkin.spec.ts` traduz os dois de volta e falha se a entidade
-      divergir. Se um dia o SQL mudar, será necessário alterar aqui.
+      divergir. Se um dia o SQL mudar, será necessário alterar.
     - `checkins_checkin_aberto_por_dia_unq` não foi afetado: ele filtra por
       `status IN ('AGUARDANDO','EM_ATENDIMENTO')`, e `CANCELADO` nunca entra
       nessa contagem desde a migration anterior.
 
-### ADR 8 - Enriquecimento de paciente fora do caminho da request
+### ADR 8 - Enriquecimento de paciente fora da requisição
 
 - **Contexto:** `GetOrCreatePaciente` precisa do nome e da data de nascimento do
-  paciente, mas o mock de cadastro responde ~600ms, falha ~10% das vezes e
+  paciente, mas o mock de cadastro responde ~600ms, falha ~12% das vezes e
   limita a 5 requisições por 10s por IP. Chamar isso dentro da request custava
   600ms em **toda** recepção e, no pior caso, deixava um erro de terceiro
   decidir se o paciente entra. Como o CPF já vem do cadastro do paciente, o nome
@@ -366,11 +350,10 @@ e de observabilidade.
   completar depois.
 - **Decisão:** a request grava o paciente em estado degradado
   (`cadastroConfirmado = false`) e enfileira `{ pacienteId, tentativa }` na fila
-  durável `cadastro.enriquecer`. O payload leva **só o id**: quem enfileira não
-  conhece o CPF, e o consumidor lê o paciente do banco. Nenhum dado pessoal no
-  payload (ADR 3). O consumidor é idempotente
-  `if (paciente.cadastroConfirmado) return`, então reenfileirar é seguro e é o
-  caminho normal.
+  durável `cadastro.enriquecer`. O payload leva **só o id**, e o consumidor lê o
+  paciente do banco. Nenhum dado pessoal no payload (ADR 3). O consumidor é
+  idempotente `if (paciente.cadastroConfirmado) return`, então reenfileirar é
+  seguro e é o caminho normal.
 - **Alternativas consideradas:**
     - Síncrono, com retry: preserva a resposta completa e é o que o fluxo
       original fazia. Descartado porque amarra o tempo de atendimento da
@@ -385,13 +368,11 @@ e de observabilidade.
     - **A request deixa de depender dos 600ms do cadastro, e também deixou de
       depender do broker para enfileirar.** A primeira versão enfileirava com
       `ClientRMQ.emit`, que é request/reply: esperava a resposta do consumidor,
-      então `emit` sem consumidor estourava a request, e o round-trip virava
-      acoplamento sem timeout. Hoje `enfileirar()` é fire-and-forget
-      (`RabbitPublisher.publicar`) e o único caminho síncrono é o do retry, que
-      espera confirmação do broker com timeout.
+      então `emit` sem consumidor estourava a request. Hoje `enfileirar()` é
+      fire-and-forget (`RabbitPublisher.publicar`) e o único caminho síncrono é
+      o do retry, que espera confirmação do broker com timeout.
     - A degradação virou estado observável em vez de erro:
-      `enriquecimentoPendente` no retorno e `cadastroConfirmado` no banco. Quem
-      lê o paciente consegue dizer "ainda não".
+      `enriquecimentoPendente` no retorno e `cadastroConfirmado` no banco.
     - A entrega é at-least-once, então a idempotência não é opcional
       (consequência herdada do ADR 3).
     - **A fila não melhorou o rate limit.** 5 req/10s por IP continua valendo.
@@ -399,9 +380,9 @@ e de observabilidade.
 
 ### ADR 9 - Resiliência da integração com o cadastro REST
 
-- **Contexto:** mesma situação do ADR 8: dependência externa lenta, instável e
-  com limite de taxa. O enunciado pergunta o que fazer quando ela cai, e a
-  resposta para o caso foi "continuar e sinalizar".
+- **Contexto:** mesma situação do ADR 8: dependência externa lenta e instável. O
+  enunciado pergunta o que fazer quando ela cai, e a resposta para o caso foi
+  "continuar e sinalizar".
 - **Decisão:** timeout explícito (`HTTP_TIMEOUT_MS` via `AbortSignal`) e falha
   classificada em três erros de domínio, porque eles têm consumidores
   diferentes: `CadastroRateLimitado` (429), `CadastroIndisponivel` (5xx e
@@ -411,24 +392,22 @@ e de observabilidade.
   mock.
 - **Alternativas consideradas:**
     - Sem timeout: herda o default do axios, que pode passar de minutos e segura
-      uma conexão do pool esse tempo todo.
+      uma conexão do pool.
     - Retry exponencial com jitter: é a escolha certa para falha transitória em
       geral, mas aqui existe um limite artificial e determinístico; backoff
-      multiplicaria tentativas contra um teto que não cede.
+      multiplicaria tentativas.
     - Confiar no rate limit do servidor e ir no máximo: com limite de 5 por 10s,
       o quinto check-in leva a resposta com 429 e vira retry.
     - **Circuit breaker:** descartado por ora. Com pacing de 2,2s, teto de 3
       tentativas e reenfileiramento, o ganho é pequeno e o custo é um estado a
-      mais para justificar o corte. Reavaliar quando houver erro sustentado.
+      mais
     - **Cache de resposta do cadastro:** descartado. O dado praticamente não
-      muda, mas cache aqui exige invalidação num serviço que já degrada de
-      propósito.
+      muda.
 - **Consequências:**
     - O pacing é por instância. Duas réplicas dividida por 2,2s cada uma somam
-      mais que o pretendido; num ambiente real o intervalo precisaria ser
-      coordenado, e o broker resolve isso com consumer único ou prefetch baixo.
+      mais que o pretendido.
     - Erro inesperado no adapter **não** vira retry: vira log e paciente
-      degradado. Um bug de programação não pode virar loop quente.
+      degradado
 
 ### ADR 10 - Fila durável
 
@@ -436,7 +415,7 @@ e de observabilidade.
   tem uma armadilha que só aparece em produção: com `wildcards: true`, o
   `ClientRMQ` declara **só o exchange** e nunca cria fila nem binding
   (client-rmq.ts, ramo `else` de `setupChannel`). Publicar em exchange sem fila
-  bindada **não dá erro**, o broker aceita e descarta. O sintoma é um paciente
+  bindada **não dá erro**, o broker aceita e descarta. O resultado é um paciente
   que nunca ganha nome, sem log e sem métrica.
 - **Decisão:** exchange `checkin.events` (topic) + fila `cadastro.enriquecer` +
   DLQ `cadastro.enriquecer.dlq`, todas duráveis. `opcoesFilaEnriquecimento()` é
@@ -453,7 +432,7 @@ e de observabilidade.
       sem declarar, mas o bind continua exigindo fila existente. Não remove a
       dependência de ordem, só troca uma falha de execução por outra.
     - Declarar a topologia no compose, fora do app: funciona, mas tira a
-      topologia do versionamento e da review, e a faz divergir do código.
+      topologia do versionamento e da review e faz ela divergir do código.
     - `emit` (request/reply) em vez de `publish` (fire-and-forget) no publisher:
       `emit` espera a resposta do consumidor, então fila ausente ou consumidor
       parado aparece como erro em vez de descarte silencioso. O custo é o
@@ -476,39 +455,18 @@ e de observabilidade.
       em vez de `ClientRMQ` (o `ChannelWrapper` não tem `waitForConfirms` e o
       `close()` dele rejeita), exchange e fila próprios do teste, e as asserções
       de produção (binding, `durable`, `x-dead-letter-*`) feitas pela API de
-      gerenciamento, em vez de por publicação. Um controle negativo foi incluído
-      porque, sem ele, um teste de entrega que é bem sucedido não prova nada: a
-      fila de destino poderia estar errada e o teste seguiria verde.
+      gerenciamento, em vez de por publicação.
     - **Fila e exchange de teste precisam de `exclusive`/`autoDelete` com
       descarte explícito.** `deleteQueue` sozinho deixa órfã toda vez que o
       teste quebra no meio, e `autoDelete` em exchange só dispara depois que
       existiu binding, o controle negativo nunca vincula nada. Sem isso o broker
-      de desenvolvimento acumula lixo a cada execução.
-- **A DLQ não recebe a desistência, mas recebia o crash do handler. Hoje não
-  recebe nenhum dos dois.** Com `noAck: true` (ADR 12) o broker trata a mensagem
-  como entregue no instante da entrega, então não existe `ack` para dar nem
-  `nack` para dar: crash no handler descarta a mensagem silenciosamente.
-  Verifiquei no broker: publiquei um payload sem o envelope `{ pattern, data }`,
-  que fazia a desestruturação lançar, e `cadastro.enriquecer.dlq` continuou em
-  zero. - Antes do `noAck: true` isso era diferente e **testado**: o Nest fazia
-  `nack` sem requeue, o broker dead-letterizava, e a mensagem chegava na DLQ com
-  `x-death.reason = "rejected"`. A rede contra crash existia e funcionava. Foi
-  ela que se perdeu. - O que cobre o caso hoje é retry no nível da aplicação: o
-- **Status:** implementado. Eventos são gravados na mesma transação que o check-in, com dispatcher publicando via confirmação (at-least-once).
-  e desiste em `MAX_TENTATIVAS`. Cobre falha de integração, que é o caso comum,
-  e não cobre crash de programação. - **Consequência a registar:** a topagem da
-  DLQ continua correta e ainda é exercitada pelo `fila.spec.ts`, mas **é
-  inalcançável pelo consumidor atual**. Virou contrato de topologia, não
-  observabilidade. Se ninguém consumir essa topologia em produção, a decisão
-  honesta é removê-la; mantive porque remover topologia é mudança de contrato e
-  o enunciado a pede. Fica escrito para não virar mito. - Reenfileirar continua
-  sendo seguro porque o consumidor é idempotente
-  (`if (paciente.cadastroConfirmado) return`).
-    - `prefetchCount: 1` dá backpressure de verdade: uma mensagem em voo por
-      instância, e o burst contra o mock fica limitado por construção.
-    - `wildcards: true` no `ServerRMQ` faz o Nest usar a routing key da mensagem
-      como pattern do `@EventPattern`, **e** bindar a fila em cada pattern
-      registrado. São dois efeitos no mesmo booleano.
+      de desenvolvimento acumula dados desnecessários a cada execução.
+- **A DLQ não recebe a desistência, mas recebia o crash do handler** Com
+  `noAck: true` (ADR 12) o broker trata a mensagem como entregue no instante da
+  entrega, então não existe `ack`, nem `nack` para dar: crash no handler
+  descarta a mensagem silenciosamente. Verifiquei no broker: publiquei um
+  payload sem o envelope `{ pattern, data }`, que fazia a desestruturação
+  lançar, e `cadastro.enriquecer.dlq` continuou em zero.
 
 ### ADR 11 - ESM com os aliases resolvidos no pós-build
 
@@ -598,7 +556,7 @@ request (`POST /check-ins`). Nome e data de nascimento vêm do mock de cadastro 
 moram em `pacientes`. Não há CPF, nome ou nascimento em nenhum evento, em nenhum
 log e em nenhuma fila.
 
-**Minimização como regra de projeto, não como garnish.**
+**Minimização como regra de projeto.**
 
 - O payload da fila `cadastro.enriquecer` leva **só** `pacienteId` e
   `tentativa`. Quem enfileira não conhece o CPF, e o consumidor lê o paciente do
@@ -613,8 +571,7 @@ log e em nenhuma fila.
 trilha não pode ser reescrita por bug ou por alguém com pressa. Isso é o oposto
 de um log mutável, e é o motivo de o log referenciar id em vez de copiar dado.
 Nenhuma chave estrangeira aponta para `logs`, e as duas que apontavam para ele
-saíram: `SET NULL` é um `UPDATE`, e o trigger o bloqueia. O log é o registro de
-algo que aconteceu, não uma projeção do estado atual.
+saíram: `SET NULL` é um `UPDATE`, e o trigger o bloqueia.
 
 **Retenção e eliminação.** O log não guarda informação pessoal, então sobrevive
 à eliminação do paciente sem persistir o dado: o `pacienteId` fica como
@@ -643,14 +600,13 @@ existe ainda.
 contra fakes onde a dependência é irrelevante. O critério: se o teste pode
 passar com a integração quebrada, ele não vale.
 
-**173 testes unitários em 15 ficheiros**, sem broker nem banco:
+**173 testes unitários em 15 arquivos**, sem broker nem banco:
 
 - Entidades e use cases com repositório e porta de eventos em memória: transição
   de estado, idempotência, `404`, pré-condição de início e ausência de
   publicação quando o save falha. Os quatro use cases de check-in estão
   cobertos, incluindo a asserção explícita de que a repetição **não** publica um
-  segundo evento, e de que a repetição também **não** audita, porque auditar a
-  mesma transição duas vezes seria inventar um evento que não aconteceu.
+  segundo evento, e de que a repetição também **não** audita.
 - `registro-auditoria.spec.ts` cobre a guarda de dado pessoal: recusa cpf, nome,
   nascimento, email e telefone, tanto em chave direta quanto aninhados em objeto
   ou dentro de array.
@@ -659,35 +615,34 @@ passar com a integração quebrada, ele não vale.
   lançar. É o teste que sustenta a promessa de que o log não derruba o fluxo.
 - `cadastro-enriquecimento.consumidor.spec.ts` cobre a máquina de estados do
   consumidor: `enriquecido`, `adiado` com contagem de tentativa, `desistido` em
-  `MAX_TENTATIVAS`, `descartado` para paciente inexistente e CPF desconhecido, e
-  erro inesperado virando log em vez de loop quente.
+  `MAX_TENTATIVAS`, `descartado` para paciente inexistente e CPF desconhecido.
 - `fila.spec.ts` verifica a topologia pela API de gerenciamento em vez de por
   publicação, com um controle negativo, porque um teste de entrega que dá certo
   não prova nada se a fila de destino puder estar errada.
 
-**58 testes e2e em 5 ficheiros**, contra Postgres e RabbitMQ do
-`docker-compose`:
+**58 testes e2e em 5 arquivos**, contra Postgres e RabbitMQ do `docker-compose`:
 
 - `check-in.e2e-spec.ts` cria check-in real e verifica persistência,
   enriquecimento, `409` com o `pacienteId` e `dataReferencia` do registro que
   colidiu, e duplicidade no mesmo dia.
 - `check-in-rotas.e2e-spec.ts` percorre o ciclo de vida inteiro pela HTTP, uma
-  rota por vez. É o ficheiro que fixa o contrato: `404` para CPF desconhecido e
-  para check-in inexistente, `400` para CPF malformado e para id que não é UUID,
-  `409` com o `statusAtual` no corpo ao tentar iniciar um check-in cancelado ou
-  finalizar um que nunca começou, `200` com `eventoId: null` na repetição de uma
-  transição idempotente, e o par lista/contagem por CPF. Os ficheiros e2e rodam
-  com `fileParallelism: false`: todos apontam para o mesmo banco, e um teste que
-  conta check-ins globalmente quebra se outro ficheiro inserir em paralelo.
+  rota por vez. É o arquivo que fixa o contrato: `404` para CPF desconhecido e
+  para check-in inexistente, `400` para CPF mal formatado e para id que não é
+  UUID, `409` com o `statusAtual` no corpo ao tentar iniciar um check-in
+  cancelado ou finalizar um que nunca começou, `200` com `eventoId: null` na
+  repetição de uma transição idempotente, e o par lista/contagem por CPF. Os
+  arquivos e2e rodam com `fileParallelism: false`: todos apontam para o mesmo
+  banco, e um teste que conta check-ins globalmente quebra se outro arquivo
+  inserir em paralelo.
 - `logs.e2e-spec.ts` é a prova de que o log é append-only de verdade, contra o
   banco: confirma que `POST /check-ins` grava `CHECKIN_CRIADO` ligado ao
   check-in, que nenhum contexto carrega CPF ou nome, que a coluna `mensagem` não
   existe mais, e que `UPDATE` e `DELETE` no log são recusados com
-  `logs sao append-only`. O último teste relê a linha depois da tentativa e
+  `logs são append-only`. O último teste relê a linha depois da tentativa e
   confere que ela continua intacta, porque "o comando falhou" não é o mesmo que
   "o dado continua igual".
 - `prisma-checkin-repository.e2e-spec.ts` confere a query real contra o schema,
-  incluindo o `statusAgendamento` tri-state e o CHECK do ciclo de vida.
+  incluindo os três estados do `statusAgendamento` e o CHECK do ciclo de vida.
 - `rabbit-publisher.spec.ts` sobe um `ServerRMQ` de verdade e verifica que o
   envelope é `{ pattern, data }`, sem `id`, `persistent`, e que o handler recebe
   a payload. **Foi este teste que reprovou de forma intermitente** durante o
@@ -697,15 +652,14 @@ passar com a integração quebrada, ele não vale.
 real que os quatro routing keys entregam o payload esperado, que a fila
 `cadastro.enriquecer` volta a zero depois do enriquecimento e que
 `cadastro.enriquecer.dlq` fica vazia. Também confirmei o comportamento
-contrário: com `noAck: true`, um payload malformado **não** chega à DLQ. É a
+contrário: com `noAck: true`, um payload mal formatado **não** chega à DLQ. É a
 consequência registrada no ADR 10, e ela só apareceu porque o broker foi
 inspecionado, não porque um teste falhou.
 
 **O que deixei conscientemente de fora.**
 
 - Teste de concorrência real sobre o índice de check-in aberto. Verifiquei o
-  conflito por requisição sequencial, que é o caminho do usuário; o teste de
-  duas requisições em paralelo contra o índice parcial ficou de fora.
+  conflito por requisição sequencial, que é o caminho do usuário;
 - Teste de carga. O pacing de 2,2s foi justificado por leitura do rate limit,
   não por medição sob pressão.
 - Teste de que o log sobrevive à eliminação do paciente. O `logs.e2e-spec.ts`
@@ -713,32 +667,22 @@ inspecionado, não porque um teste falhou.
   resolveu, mas não há cenário que apague paciente e confira o log sobrevivente,
   porque não há endpoint nem rotina que apague paciente em produção ainda.
 - `fila.spec.ts` e a API no ar no mesmo instante: é o problema de hermeticidade
-  de que fala o ADR 10. O spec é feito para rodar com o broker, e o broker com o
-  consumer real é outra história.
+  de que comentei no ADR 10. O spec é feito para rodar com o broker
 
 ## Próximos passos rumo a produção
 
-**Em ordem de quanto dói não ter:**
-
-1. **Dispatcher do outbox (ADR 1).** A janela de perda de evento continua
-   aberta. É o item mais importante desta lista e o único que é correção de um
-   ADR já escrito, não melhoria.
-2. **Devolver a DLQ ao que ela devia fazer**, ou removê-la. Com `noAck: true`
+1. **Devolver a DLQ ao que ela devia fazer**, ou removê-la. Com `noAck: true`
    ela é inalcançável (ADR 10). As duas saídas são defensáveis; o que não é
    defensável é deixar a topologia prometendo uma garantia que não existe.
-3. **Redelivery com garantia.** `noAck: true` trocou travamento por perda em
+2. **Redelivery com garantia.** `noAck: true` trocou travamento por perda em
    crash. O caminho é confirmação manual feita corretamente, e a forma correta
    nesse arranjo é um `Channel` próprio por mensagem ou um consumer que gerencia
    o próprio ack, a ser testado contra o broker, não deduzido.
-4. **Métricas e health check.** Profundidade de fila, taxa de `desistido`, tempo
+3. **Métricas e health check.** Profundidade de fila, taxa de `desistido`, tempo
    de enriquecimento e taxa de 429 do cadastro. Hoje o sinal é o log
    estruturado, e log não é métrica.
-5. **Rotinas de pagamento do rate limit.** O pacing é por instância; com duas
-   réplicas, o intervalo efetivo cai pela metade (ADR 9). Coordinator único ou
+4. **Rotinas de pacing do rate limit.** O pacing é por instância; com duas
+   réplicas, o intervalo efetivo cai pela metade (ADR 9). Coordenador único ou
    consumo serializado resolvem.
-6. **Circuit breaker no cadastro**, quando o erro sustentado justificar o estado
+5. **Circuit breaker no cadastro**, quando o erro sustentado justificar o estado
    extra (ADR 9).
-7. **Normalizar a linguagem das routing keys** (`checkin.created` contra as três
-   em português), em uma major version do contrato de eventos, com os
-   consumidores avisados.
-

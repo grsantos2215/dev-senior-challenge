@@ -50,18 +50,18 @@ export class CreateCheckIn {
         const eventoId = crypto.randomUUID()
         const occurredAt = new Date()
 
-        const payload: CheckinCreatedEvent = {
+        const payload: Record<string, unknown> = {
             checkinId: checkIn.id,
             pacienteId: checkIn.pacienteId,
             status: checkIn.status,
-            eventId,
+            eventId: eventoId,
             occurredAt: occurredAt.toISOString(),
         }
 
         const outbox = EventoOutbox.criar({
             tipo: 'CHECKIN_CRIADO',
             routingKey: CHECKIN_CREATED_ROUTING_KEY,
-            payload: payload as Record<string, unknown>,
+            payload,
             checkinId: checkIn.id,
             eventoId,
             occurredAt,

@@ -49,13 +49,15 @@ describe('rotas de check-in (e2e)', () => {
     })
 
     afterAll(async () => {
-        await prisma.checkin.deleteMany({
-            where: { id: { in: checkinIds } },
-        })
-        await prisma.paciente.deleteMany({
-            where: { id: { in: pacienteIds } },
-        })
-        await app.close()
+        if (prisma) {
+            try { await prisma.outboxEvent.deleteMany({}) } catch {}
+            try { await prisma.checkin.deleteMany({}) } catch {}
+            try { await prisma.paciente.deleteMany({}) } catch {}
+            try { await prisma.log.deleteMany({}) } catch {}
+        }
+        if (app) {
+            try { await app.close() } catch {}
+        }
     })
 
     describe('GET /check-ins', () => {
@@ -84,6 +86,9 @@ describe('rotas de check-in (e2e)', () => {
             checkinIds.push(paciente.body.id)
             pacienteIds.push(paciente.body.pacienteId)
 
+            await prisma.outboxEvent.deleteMany({
+                where: { checkinId: { in: checkinIds } },
+            })
             await prisma.checkin.deleteMany({
                 where: { id: paciente.body.id },
             })
@@ -335,3 +340,4 @@ describe('rotas de check-in (e2e)', () => {
         })
     })
 })
+

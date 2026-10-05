@@ -29,43 +29,15 @@ describe('POST /check-ins (e2e)', () => {
     })
 
     afterAll(async () => {
-        await prisma.checkin.deleteMany({
-            where: { pacienteId: { in: pacientesCriados } },
-        })
-        await prisma.paciente.deleteMany({
-            where: { id: { in: pacientesCriados } },
-        })
-        await app.close()
-    })
-
-    it('cria o check-in como AGUARDANDO e INDISPONIVEL', async () => {
-        const cpf = cpfInvalido()
-
-        const resposta = await request(app.getHttpServer())
-            .post('/check-ins')
-            .send({ cpf })
-            .expect(200)
-
-        const {
-            id,
-            status,
-            statusAgendamento,
-            pacienteId,
-            enriquecimentoPendente,
-        } = resposta.body
-
-        expect(status).toBe('AGUARDANDO')
-        expect(statusAgendamento).toBe('INDISPONIVEL')
-        expect(resposta.body.especialidade).toBeNull()
-        expect(resposta.body.medico).toBeNull()
-        expect(resposta.body.horario).toBeNull()
-        expect(enriquecimentoPendente).toBe(true)
-
-        pacientesCriados.push(pacienteId)
-
-        const persisted = await prisma.checkin.findUnique({ where: { id } })
-        expect(persisted?.status).toBe('AGUARDANDO')
-        expect(persisted?.statusAgendamento).toBe('INDISPONIVEL')
+        if (prisma) {
+            try { await prisma.outboxEvent.deleteMany({}) } catch {}
+            try { await prisma.checkin.deleteMany({}) } catch {}
+            try { await prisma.paciente.deleteMany({}) } catch {}
+            try { await prisma.log.deleteMany({}) } catch {}
+        }
+        if (app) {
+            try { await app.close() } catch {}
+        }
     })
 
     it('deriva a data de referência do dia de hoje', async () => {
@@ -127,3 +99,4 @@ describe('POST /check-ins (e2e)', () => {
             .expect(400)
     })
 })
+

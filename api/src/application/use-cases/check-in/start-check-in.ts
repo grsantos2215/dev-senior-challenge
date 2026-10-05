@@ -2,9 +2,13 @@ import { AuditoriaPort } from '@/application/services/auditoria/auditoria.port'
 import { CheckIn } from '@/application/entities/checkin'
 import { CheckInNotFound } from './errors/check-in-not-found'
 import { CheckInRepository } from '@/application/repositories/checkin-repository'
-import { EventosDeCheckInPort } from '@/application/services/check-in/eventos-de-check-in.port'
+import { EventoOutbox } from '@/application/entities/evento-outbox'
 import { Injectable } from '@nestjs/common'
 import { RegistroAuditoria } from '@/application/entities/registro-auditoria'
+
+import {
+    CHECKIN_STARTED_ROUTING_KEY,
+} from '@/infra/messaging/rabbit-mq/checkin-events.publisher'
 
 interface StartCheckInRequest {
     checkinId: string
@@ -19,7 +23,6 @@ interface StartCheckInResponse {
 export class StartCheckIn {
     constructor(
         private checkInRepository: CheckInRepository,
-        private eventos: EventosDeCheckInPort,
         private auditoria: AuditoriaPort,
     ) {}
 
@@ -35,9 +38,32 @@ export class StartCheckIn {
 
         checkIn.iniciado()
 
-        await this.checkInRepository.save(checkIn)
+        if (jaIniciado) {
+            await this.checkInRepository.save(checkIn)
+            return { checkIn, eventoId: null }
+        }
 
-        if (jaIniciado) return { checkIn, eventoId: null }
+        const eventoId = crypto.randomUUID()
+        const occurredAt = new Date()
+
+        const payload: Record<string, unknown> = {
+            checkinId: checkIn.id,
+            pacienteId: checkIn.pacienteId,
+            status: checkIn.status,
+            eventId: eventoId,
+            occurredAt: occurredAt.toISOString(),
+        }
+
+        const outbox = EventoOutbox.criar({
+            tipo: 'CHECKIN_INICIADO',
+            routingKey: CHECKIN_STARTED_ROUTING_KEY,
+            payload,
+            checkinId: checkIn.id,
+            eventoId,
+            occurredAt,
+        })
+
+        await this.checkInRepository.save(checkIn, [outbox])
 
         await this.auditoria.registrar(
             new RegistroAuditoria(
@@ -51,12 +77,6 @@ export class StartCheckIn {
                 checkIn.pacienteId,
             ),
         )
-
-        const eventoId = this.eventos.publicarCheckinIniciado({
-            checkinId: checkIn.id,
-            pacienteId: checkIn.pacienteId,
-            status: checkIn.status,
-        })
 
         return { checkIn, eventoId }
     }
