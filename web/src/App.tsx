@@ -122,7 +122,7 @@ function KioskPage() {
               <h1 className="text-[32px] font-semibold tracking-[-0.05em] sm:text-[38px]">Bem-vindo(a)</h1>
               <p className="mt-2 max-w-md text-sm leading-6 text-[#7c8983]">Para iniciar seu atendimento, informe seu CPF abaixo.</p>
               <form onSubmit={submitCpf} className="mt-8 space-y-5">
-                <Field className="gap-2"><FieldLabel htmlFor="kiosk-cpf">CPF</FieldLabel><Input id="kiosk-cpf" inputMode="numeric" autoComplete="off" autoFocus placeholder="000.000.000-00" value={formatCpf(cpfInput)} onChange={(event) => { setCpfInput(digits(event.target.value)); setErrorMessage(null) }} className="h-12 rounded-xl bg-white text-base tracking-[0.04em]"/><FieldDescription>Digite somente os números do documento.</FieldDescription></Field>
+              <Field className="gap-2"><FieldLabel htmlFor="kiosk-cpf">CPF</FieldLabel><Input id="kiosk-cpf" inputMode="numeric" autoComplete="off" autoFocus placeholder="000.000.000-00" value={formatCpf(cpfInput)} onChange={(event) => { setCpfInput(digits(event.target.value)); setErrorMessage(null) }} className="h-12 items-center rounded-xl bg-white text-base tracking-[0.04em] [&_[data-slot=input]]:h-full [&_[data-slot=input]]:leading-normal"/><FieldDescription>Digite somente os números do documento.</FieldDescription></Field>
                 {errorMessage && <Alert variant="error"><CircleAlert size={16}/><AlertDescription>{errorMessage}</AlertDescription></Alert>}
                 <Button type="submit" size="lg" className="h-12 w-full rounded-xl bg-[#277252] text-white hover:bg-[#1e6246]" disabled={digits(cpfInput).length !== 11 || createMutation.isPending} loading={createMutation.isPending}>Continuar <ArrowRight size={17}/></Button>
               </form>
@@ -235,10 +235,12 @@ function ReceptionPage() {
               {activeCpf && <Button variant="outline" size="sm" onClick={() => void patientQuery.refetch()} disabled={patientQuery.isFetching}><RefreshCw size={14} className={patientQuery.isFetching ? "animate-spin" : ""} /> Atualizar</Button>}
             </CardHeader>
             <CardPanel className="px-5 pb-6 md:px-7">
-              <form onSubmit={searchPatient} className="flex flex-col gap-3 rounded-xl border border-[#edf1ef] bg-[#fafcfb] p-4 sm:flex-row sm:items-end">
-                <Field className="flex-1 gap-1.5"><FieldLabel htmlFor="cpf">CPF do paciente</FieldLabel><Input id="cpf" inputMode="numeric" autoComplete="off" placeholder="000.000.000-00" value={formatCpf(cpfInput)} onChange={(event) => setCpfInput(digits(event.target.value))} className="h-10 rounded-lg bg-white"/><FieldDescription>O CPF é usado somente para localizar o cadastro.</FieldDescription></Field>
-                <Button type="submit" variant="outline" className="h-10 border-[#dce6e0] bg-white px-4"><Search size={15} /> Buscar paciente</Button>
-                <Button type="button" className="h-10 bg-[#277252] px-4 text-white hover:bg-[#1e6246]" disabled={digits(cpfInput).length !== 11 || createMutation.isPending} loading={createMutation.isPending} onClick={() => { setFeedback(null); createMutation.mutate(digits(cpfInput)) }}><Plus size={16} /> Novo check-in</Button>
+              <form onSubmit={searchPatient} className="flex flex-col gap-3 rounded-xl border border-[#edf1ef] bg-[#fafcfb] p-4 sm:flex-row sm:items-start">
+                <Field className="flex-1 gap-1.5"><FieldLabel htmlFor="cpf">CPF do paciente</FieldLabel><Input id="cpf" inputMode="numeric" autoComplete="off" placeholder="000.000.000-00" value={formatCpf(cpfInput)} onChange={(event) => setCpfInput(digits(event.target.value))} className="h-10 items-center rounded-lg bg-white [&_[data-slot=input]]:h-full [&_[data-slot=input]]:leading-normal"/><FieldDescription>O CPF é usado somente para localizar o cadastro.</FieldDescription></Field>
+                <div className="flex flex-col gap-3 min-[480px]:flex-row sm:pt-[26px]">
+                  <Button type="submit" variant="outline" className="h-10 border-[#dce6e0] bg-white px-4"><Search size={15} /> Buscar paciente</Button>
+                  <Button type="button" className="h-10 bg-[#277252] px-4 text-white hover:bg-[#1e6246]" disabled={digits(cpfInput).length !== 11 || createMutation.isPending} loading={createMutation.isPending} onClick={() => { setFeedback(null); createMutation.mutate(digits(cpfInput)) }}><Plus size={16} /> Novo check-in</Button>
+                </div>
               </form>
 
               {feedback && <Alert className="mt-4" variant={feedback.kind === "error" ? "error" : "success"}><CircleAlert size={16}/><AlertTitle>{feedback.kind === "error" ? "Não foi possível concluir" : "Tudo certo"}</AlertTitle><AlertDescription>{feedback.text}</AlertDescription></Alert>}
