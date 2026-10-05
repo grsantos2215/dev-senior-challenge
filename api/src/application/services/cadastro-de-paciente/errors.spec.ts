@@ -11,7 +11,7 @@ describe('erros do port de cadastro', () => {
 
         expect(erro.message).not.toMatch(/\d{11}/)
         expect(erro.message).not.toContain('cpf')
-        expect(erro.message).toBe('Paciente nao encontrado no cadastro.')
+        expect(erro.message).toBe('Paciente não encontrado no cadastro.')
     })
 
     it('CadastroIndisponivel não embute a causa na mensagem', () => {

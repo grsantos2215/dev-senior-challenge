@@ -32,7 +32,7 @@ export class SaudeService {
                         detalhe:
                             erro instanceof Error
                                 ? erro.message
-                                : 'verificacao falhou',
+                                : 'verificação falhou',
                     }
                 }
             }),
